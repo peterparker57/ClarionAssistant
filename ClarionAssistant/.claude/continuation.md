@@ -31,32 +31,48 @@ Deployed and verified. 1,082 symbols indexed from Clarion LibSrc equate files. C
 ### Embeditor lifecycle — COMPLETE
 Full cycle verified: `open_procedure_embed` → edit → `save_and_close_embeditor` or `cancel_embeditor` → `open_procedure_embed` another procedure
 
-### Embed navigation tools — BUILT, AWAITING DEPLOY + TEST
-Four new MCP tools added to navigate between embed points inside the embeditor:
+### Embed navigation tools — TESTED, WORKING
+- Tested 2026-03-22 in SolutionForm embeditor
+- `next_filled_embed`: 634 → 642 (jumps between filled embeds)
+- `prev_filled_embed`: 642 → 634 (goes back)
+- `next_embed`: 634 → 637 (all embed points, not just filled)
+- `prev_embed`: 637 → 634 (goes back)
+- Also verified `insert_text_at_cursor` works inside embed points
+- Implementation: reflection on SharpDevelop command classes from CommonSources.dll (`GotoNextEmbed`, `GotoPrevEmbed`, `GotoNextFilledEmbed`, `GotoPrevFilledEmbed`)
 
-- `next_embed` — go to next embed point
-- `prev_embed` — go to previous embed point
-- `next_filled_embed` — go to next filled embed (one containing user code)
-- `prev_filled_embed` — go to previous filled embed (one containing user code)
+### "Create COM" toolbar button — TESTED, WORKING
+Added a "Create COM" button to the ClarionAssistant toolbar that dispatches to the `/ClarionCOM` skill.
+- Tested 2026-03-22: Button reads COM.ProjectsFolder setting, sends `/ClarionCOM Create a new COM control in <folder>` to Claude terminal
+- ClarionCOM skill triggers correctly and begins the wizard workflow
+- NOTE: AskUserQuestion must be in the settings.json allow list for the wizard selection UI to work (blocked by dontAsk mode otherwise)
 
-**Implementation**: Finds and instantiates the SharpDevelop command classes from CommonSources.dll via reflection, then calls `Run()`:
-- `SoftVelocity.Generator.Editor.Commands.GotoNextEmbed`
-- `SoftVelocity.Generator.Editor.Commands.GotoPrevEmbed`
-- `SoftVelocity.Generator.Editor.Commands.GotoNextFilledEmbed`
-- `SoftVelocity.Generator.Editor.Commands.GotoPrevFilledEmbed`
-
-These inherit from `AbstractGenEditorCommand` (which extends `AbstractMenuCommand`). The `Run()` method performs the navigation.
-
-**What to do after deploy:**
-1. Open a procedure embeditor (e.g., `open_procedure_embed` for "SolutionForm")
-2. Call `next_filled_embed` — cursor should jump to the next embed that has user code
-3. Call `next_filled_embed` again — should advance to the following filled embed
-4. Call `prev_filled_embed` — should go back
-5. Try `next_embed` / `prev_embed` — these navigate ALL embed points, not just filled ones
-6. If `Run()` throws because it needs an `Owner` property set (common with AbstractMenuCommand), we may need to set `cmd.Owner = editor` before calling `Run()`. Check the error message.
-7. Related ClaGenEditor properties for context: `IsOnFirstEmbed`, `IsOnLastEmbed`, `IsOnFirstFilledEmbed`, `IsOnLastFilledEmbed`
+**What it does:**
+1. Checks if `COM.ProjectsFolder` setting is configured
+2. If not, opens Settings dialog so user can set it
+3. Sends `/ClarionCOM Create a new COM control in <folder>` to the Claude terminal
+4. The ClarionCOM skill takes over from there
 
 **Code locations:**
+- `ClaudeChatControl.cs` — `OnCreateCom()` handler, `createComButton` in toolbar setup
+- `Dialogs/ClaudeChatSettingsDialog.cs` — "COM Projects" section with `_comFolderInput` + browse button, saves as `COM.ProjectsFolder`
+
+**What to test after deploy:**
+1. Click "Create COM" — should prompt for Settings if no folder configured
+2. Set a COM Projects Folder (e.g., `H:\DevLaptop\ClarionCOM`)
+3. Click "Create COM" again — should send the command to Claude
+4. Verify the ClarionCOM skill triggers and starts the interactive wizard
+5. If the command format needs adjusting (e.g., skill doesn't trigger), tweak the command string in `OnCreateCom()`
+
+**Design direction (discussed 2026-03-22):**
+- ClarionAssistant is evolving into a Clarion-focused skill dispatcher with IDE-native UI buttons
+- COM controls and addins live in centralized folders (shared across solutions)
+- CodeGraph analysis stays per-solution
+- Future buttons: "Create Addin", "Analyze Solution", etc.
+- The COM Pane addin (`H:\DevLaptop\ClarionIdeCOMPane`) handles the "use a COM control" side — it reads from `clarion12\accessory\resources` and `bin` folders
+- The `clarioncom-create` skill handles the "build a COM control" side
+- This button bridges them
+
+**Code locations (embed navigation):**
 - `AppTreeService.cs` — `NavigateEmbed(string direction, bool filledOnly)` method (near end of file)
 - `McpToolRegistry.cs` — four Register blocks after `cancel_embeditor`, before `open_file`
 

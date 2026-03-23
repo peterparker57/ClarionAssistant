@@ -19,6 +19,8 @@ namespace ClarionAssistant.Dialogs
         private TextBox _agentNameInput;
         private Button _buildLibButton;
         private Label _libStatus;
+        private TextBox _comFolderInput;
+        private Button _browseComFolderButton;
         private Button _okButton;
         private Button _cancelButton;
 
@@ -35,12 +37,12 @@ namespace ClarionAssistant.Dialogs
 
         private void InitializeComponents()
         {
-            Text = "Claude Chat Settings";
+            Text = "Clarion Assistant Settings";
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
             MinimizeBox = false;
             StartPosition = FormStartPosition.CenterParent;
-            Size = new Size(450, 420);
+            Size = new Size(450, 490);
             BackColor = Color.FromArgb(45, 45, 45);
             ForeColor = Color.White;
             Font = new Font("Segoe UI", 9f);
@@ -209,6 +211,55 @@ namespace ClarionAssistant.Dialogs
                 Font = new Font("Segoe UI", 8f)
             };
 
+            y += rowH + 10;
+
+            // === COM Projects Section ===
+            var comSeparator = new Label
+            {
+                Text = "COM Projects",
+                Location = new Point(labelX, y),
+                AutoSize = true,
+                ForeColor = Color.FromArgb(100, 180, 255),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+            };
+            y += 22;
+
+            var comFolderLabel = new Label
+            {
+                Text = "Projects Folder:",
+                Location = new Point(labelX, y + 3),
+                AutoSize = true
+            };
+            _comFolderInput = new TextBox
+            {
+                Location = new Point(inputX, y),
+                Width = inputW - 35,
+                BackColor = Color.FromArgb(60, 60, 60),
+                ForeColor = Color.White,
+                BorderStyle = BorderStyle.FixedSingle
+            };
+            _browseComFolderButton = new Button
+            {
+                Text = "...",
+                Location = new Point(inputX + inputW - 30, y - 1),
+                Width = 30,
+                Height = _comFolderInput.Height + 2,
+                FlatStyle = FlatStyle.Flat,
+                BackColor = Color.FromArgb(70, 70, 70),
+                ForeColor = Color.White
+            };
+            _browseComFolderButton.Click += (s, e) =>
+            {
+                using (var dlg = new FolderBrowserDialog())
+                {
+                    dlg.Description = "Select folder where COM control projects are created";
+                    if (!string.IsNullOrEmpty(_comFolderInput.Text))
+                        dlg.SelectedPath = _comFolderInput.Text;
+                    if (dlg.ShowDialog() == DialogResult.OK)
+                        _comFolderInput.Text = dlg.SelectedPath;
+                }
+            };
+
             y += rowH + 15;
 
             // OK / Cancel
@@ -249,6 +300,7 @@ namespace ClarionAssistant.Dialogs
                 _multiTerminalCheck, _multiTerminalStatus,
                 agentLabel, _agentNameInput,
                 libSeparator, _buildLibButton, _libStatus,
+                comSeparator, comFolderLabel, _comFolderInput, _browseComFolderButton,
                 _okButton, _cancelButton
             });
         }
@@ -286,6 +338,9 @@ namespace ClarionAssistant.Dialogs
             _agentNameInput.Text = _settings.Get("MultiTerminal.AgentName") ?? "ClarionIDE";
 
             UpdateMultiTerminalStatus();
+
+            // COM Projects folder
+            _comFolderInput.Text = _settings.Get("COM.ProjectsFolder") ?? "";
         }
 
         private void UpdateMultiTerminalStatus()
@@ -300,6 +355,7 @@ namespace ClarionAssistant.Dialogs
             _settings.Set("Claude.WorkingDirectory", _workingDirInput.Text);
             _settings.Set("MultiTerminal.Enabled", _multiTerminalCheck.Checked.ToString().ToLower());
             _settings.Set("MultiTerminal.AgentName", _agentNameInput.Text);
+            _settings.Set("COM.ProjectsFolder", _comFolderInput.Text);
         }
 
         private void OnBuildLibrary(object sender, EventArgs e)
@@ -340,6 +396,7 @@ namespace ClarionAssistant.Dialogs
         public string WorkingDirectory { get { return _workingDirInput.Text; } }
         public bool MultiTerminalEnabled { get { return _multiTerminalCheck.Checked; } }
         public string AgentName { get { return _agentNameInput.Text; } }
+        public string ComProjectsFolder { get { return _comFolderInput.Text; } }
 
         public static bool IsMultiTerminalAvailable()
         {

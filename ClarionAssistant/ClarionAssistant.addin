@@ -10,7 +10,7 @@
     <Pad id="ClassHelper" category="Tools" title="Class Helper"
          icon="PadIcons.ClassBrowser" shortcut="Control|Alt|M"
          class="ClarionAssistant.ClassHelperPad"/>
-    <Pad id="ClaudeChat" category="Tools" title="Claude Chat"
+    <Pad id="ClaudeChat" category="Tools" title="Clarion Assistant"
          icon="PadIcons.Output" shortcut="Control|Alt|C"
          class="ClarionAssistant.ClaudeChatPad"/>
     <Pad id="AgentPanel" category="Tools" title="Agent Panel"
@@ -21,7 +21,7 @@
   <Path name="/Workspace/Tools">
     <MenuItem id="ShowClassHelper" label="Class Helper"
               class="ClarionAssistant.ShowClassHelperCommand"/>
-    <MenuItem id="ShowClaudeChat" label="Claude Chat"
+    <MenuItem id="ShowClaudeChat" label="Clarion Assistant"
               class="ClarionAssistant.ShowClaudeChatCommand"/>
     <MenuItem id="ShowAgentPanel" label="Agent Panel"
               class="ClarionAssistant.ShowAgentPanelCommand"/>

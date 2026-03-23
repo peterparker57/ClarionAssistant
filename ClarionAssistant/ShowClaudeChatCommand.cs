@@ -31,8 +31,8 @@ namespace ClarionAssistant
             catch (Exception ex)
             {
                 System.Windows.Forms.MessageBox.Show(
-                    "Error showing Claude Chat: " + ex.Message,
-                    "Claude Chat",
+                    "Error showing Clarion Assistant: " + ex.Message,
+                    "Clarion Assistant",
                     System.Windows.Forms.MessageBoxButtons.OK,
                     System.Windows.Forms.MessageBoxIcon.Error);
             }

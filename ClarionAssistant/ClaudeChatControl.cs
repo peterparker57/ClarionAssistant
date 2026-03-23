@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 using ClarionAssistant.Dialogs;
 using ClarionAssistant.Services;
@@ -206,15 +207,16 @@ namespace ClarionAssistant
             var settingsButton = new ToolStripButton("Settings") { ForeColor = Color.White, ToolTipText = "Terminal and Claude settings" };
             settingsButton.Click += OnSettings;
 
-            var taskBoardButton = new ToolStripButton("Task Board") { ForeColor = Color.White, ToolTipText = "Open lifecycle board for active task" };
-            taskBoardButton.Click += OnOpenTaskBoard;
+            var createComButton = new ToolStripButton("Create COM") { ForeColor = Color.FromArgb(100, 200, 255), ToolTipText = "Create a new COM control for Clarion" };
+            createComButton.Click += OnCreateCom;
 
             _statusLabel = new ToolStripLabel("Starting...") { Alignment = ToolStripItemAlignment.Right, ForeColor = Color.Gray };
 
             _toolbar.Items.Add(newChatButton);
             _toolbar.Items.Add(new ToolStripSeparator());
             _toolbar.Items.Add(settingsButton);
-            _toolbar.Items.Add(taskBoardButton);
+            _toolbar.Items.Add(new ToolStripSeparator());
+            _toolbar.Items.Add(createComButton);
             _toolbar.Items.Add(_statusLabel);
 
             // === Terminal renderer ===
@@ -504,41 +506,32 @@ namespace ClarionAssistant
             }
         }
 
-        private void OnOpenTaskBoard(object sender, EventArgs e)
+        private void OnCreateCom(object sender, EventArgs e)
         {
-            if (_multiTerminalApi == null)
-                _multiTerminalApi = new MultiTerminalApiClient();
-            var api = _multiTerminalApi;
-            string agentName = Environment.GetEnvironmentVariable("MULTITERMINAL_NAME");
-            if (string.IsNullOrEmpty(agentName)) agentName = "ClarionAssistant";
+            string comFolder = _settings.Get("COM.ProjectsFolder");
+            if (string.IsNullOrEmpty(comFolder) || !Directory.Exists(comFolder))
+            {
+                MessageBox.Show(
+                    "Please configure the COM Projects Folder in Settings first.",
+                    "Create COM Control",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                OnSettings(sender, e);
+                // Re-read after settings dialog
+                comFolder = _settings.Get("COM.ProjectsFolder");
+                if (string.IsNullOrEmpty(comFolder) || !Directory.Exists(comFolder))
+                    return;
+            }
 
-            System.Threading.Tasks.Task.Run(() =>
+            if (_terminal == null || !_terminal.IsRunning)
             {
-                if (!api.IsAvailable()) return new { taskId = (string)null, error = "MultiTerminal is not running." };
-                var result = api.GetActiveTask(agentName);
-                if (result.Success && result.Data != null && result.Data.Task != null)
-                    return new { taskId = result.Data.Task.Id, error = (string)null };
-                var tasksResult = api.ListTasks("in_progress");
-                if (tasksResult.Success && tasksResult.Data != null && tasksResult.Data.Count > 0)
-                    return new { taskId = tasksResult.Data[0].Id, error = (string)null };
-                return new { taskId = (string)null, error = "No active tasks found." };
-            }).ContinueWith(t =>
-            {
-                if (IsDisposed) return;
-                if (t.IsFaulted)
-                {
-                    MessageBox.Show("Error opening task board: " + t.Exception.InnerException.Message,
-                        "Task Board", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-                if (t.Result.error != null)
-                {
-                    MessageBox.Show(t.Result.error, "Task Board", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    return;
-                }
-                bool isDark = BackColor.GetBrightness() < 0.5f;
-                TaskLifecycleBoardForm.OpenForTask(t.Result.taskId, api, isDark);
-            }, System.Threading.Tasks.TaskScheduler.FromCurrentSynchronizationContext());
+                MessageBox.Show("Claude is not running. Please wait for it to start.",
+                    "Create COM Control", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            string command = "/ClarionCOM Create a new COM control in " + comFolder + "\r";
+            _terminal.Write(Encoding.UTF8.GetBytes(command));
         }
 
         #endregion
