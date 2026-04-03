@@ -402,6 +402,46 @@ begin
   end;
 end;
 
+function UninstallPrevious: Boolean;
+var
+  UninstallKey: string;
+  UninstallString: string;
+  OldVersion: string;
+  ResultCode: Integer;
+begin
+  Result := True;
+  // Look for existing install in registry (same AppId)
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{B7E2F4A1-8C3D-4E5F-9A1B-2C3D4E5F6A7B}_is1';
+
+  if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) or
+     RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
+  begin
+    // Try to get the old version number for the message
+    if not RegQueryStringValue(HKLM, UninstallKey, 'DisplayVersion', OldVersion) then
+      if not RegQueryStringValue(HKCU, UninstallKey, 'DisplayVersion', OldVersion) then
+        OldVersion := 'unknown';
+
+    if MsgBox('A previous version of Clarion Assistant (' + OldVersion + ') is installed.' + #13#10#13#10 +
+              'It must be removed before installing version {#MyAppVersion}.' + #13#10#13#10 +
+              'Uninstall the previous version now?', mbConfirmation, MB_YESNO) = IDNO then
+    begin
+      Result := False;
+      Exit;
+    end;
+
+    // Remove surrounding quotes if present
+    if (Length(UninstallString) > 1) and (UninstallString[1] = '"') then
+      UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
+
+    if FileExists(UninstallString) then
+    begin
+      Log('Running uninstaller: ' + UninstallString);
+      Exec(UninstallString, '/SILENT /NORESTART /SUPPRESSMSGBOXES', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      Log('Uninstaller returned: ' + IntToStr(ResultCode));
+    end;
+  end;
+end;
+
 function InitializeSetup: Boolean;
 var
   Msg: string;
@@ -425,6 +465,16 @@ begin
            'function until these are installed.' + #13#10#13#10 +
            'Continue anyway?';
     Result := (MsgBox(Msg, mbConfirmation, MB_YESNO) = IDYES);
+  end;
+end;
+
+function PrepareToInstall(var NeedsRestart: Boolean): String;
+begin
+  Result := '';
+  NeedsRestart := False;
+  if not UninstallPrevious then
+  begin
+    Result := 'Previous version must be uninstalled before continuing.';
   end;
 end;
 
