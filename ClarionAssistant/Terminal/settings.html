@@ -70,7 +70,7 @@
   .field-label { font-size: 12px; color: var(--section-fg); margin-bottom: 5px; font-weight: 500; }
   .field-desc { font-size: 11px; color: var(--desc-fg); margin-top: 3px; }
 
-  select, input[type="text"], input[type="number"] {
+  select, input[type="text"], input[type="password"], input[type="number"] {
     width: 100%; height: 34px; padding: 0 10px;
     background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border);
     border-radius: 6px; font-size: 13px; font-family: inherit; outline: none;
@@ -447,37 +447,7 @@
 
       <button class="btn" onclick="showGhForm()" style="margin-top:4px">+ Add Account</button>
 
-      <!-- Add/Edit form (inline, shown/hidden) -->
-      <div id="ghForm" style="display:none;margin-top:16px;padding:16px;background:var(--card-bg);border:1px solid var(--card-border);border-radius:8px">
-        <h3 style="margin-top:0" id="ghFormTitle">Add Account</h3>
-        <input type="hidden" id="ghFormId" value="">
-        <div class="field">
-          <div class="field-label">Provider</div>
-          <select id="ghProvider" onchange="onProviderChange()">
-            <option value="github">GitHub</option>
-            <option value="bitbucket">Bitbucket</option>
-          </select>
-        </div>
-        <div class="field">
-          <div class="field-label">Display Name</div>
-          <input type="text" id="ghDisplayName" placeholder="e.g. My GitHub">
-        </div>
-        <div class="field">
-          <div class="field-label">Username</div>
-          <input type="text" id="ghUsername" placeholder="e.g. clarionlive">
-        </div>
-        <div class="field">
-          <div class="field-label">Personal Access Token</div>
-          <input type="text" id="ghToken" placeholder="ghp_..." style="font-family:'Cascadia Mono',Consolas,monospace;font-size:12px">
-          <div class="field-desc" id="ghTokenDesc">Generate a token at GitHub &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens</div>
-        </div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
-          <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveGhAccount()">Save</button>
-          <button class="btn" onclick="cancelGhForm()">Cancel</button>
-          <button class="btn" id="ghTestBtn" onclick="testGhToken()">Test</button>
-          <span id="ghTestResult" style="font-size:12px;margin-left:4px"></span>
-        </div>
-      </div>
+      <!-- Add/Edit form is now in the ghFormOverlay modal -->
     </div>
 
     <!-- About -->
@@ -545,6 +515,54 @@
     <div class="cmd-dialog-footer">
       <button class="btn-cancel" onclick="cmdDialogCancel()">Cancel</button>
       <button class="btn-ok" onclick="cmdDialogOk()">OK</button>
+    </div>
+  </div>
+</div>
+
+<!-- GitHub Account overlay -->
+<div class="overlay" id="ghFormOverlay" onclick="if(event.target===this)cancelGhForm()">
+  <div class="overlay-panel" style="width:420px;max-height:480px">
+    <div class="overlay-header">
+      <h3 id="ghFormTitle">Add Account</h3>
+      <button class="overlay-close" onclick="cancelGhForm()">&times;</button>
+    </div>
+    <div class="overlay-body">
+      <input type="hidden" id="ghFormId" value="">
+      <div class="field">
+        <div class="field-label">Provider</div>
+        <select id="ghProvider" onchange="onProviderChange()">
+          <option value="github">GitHub</option>
+          <option value="bitbucket">Bitbucket</option>
+        </select>
+      </div>
+      <div class="field">
+        <div class="field-label">Display Name</div>
+        <input type="text" id="ghDisplayName" placeholder="e.g. My GitHub">
+      </div>
+      <div class="field">
+        <div class="field-label">Username</div>
+        <input type="text" id="ghUsername" placeholder="e.g. clarionlive">
+      </div>
+      <div class="field">
+        <div class="field-label">Personal Access Token</div>
+        <div style="position:relative">
+          <input type="password" id="ghToken" placeholder="ghp_..." style="font-family:'Cascadia Mono',Consolas,monospace;font-size:12px;padding-right:36px">
+          <button type="button" onclick="toggleTokenVis()" id="ghTokenToggle" title="Show/hide token"
+            style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--desc-fg);font-size:16px;line-height:1">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <div class="field-desc" id="ghTokenDesc">Generate a token at GitHub &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:12px">
+        <button class="btn" style="background:var(--accent);color:#fff;border-color:var(--accent)" onclick="saveGhAccount()">Save</button>
+        <button class="btn" onclick="cancelGhForm()">Cancel</button>
+        <button class="btn" id="ghTestBtn" onclick="testGhToken()">Test</button>
+        <span id="ghTestResult" style="font-size:12px;margin-left:4px"></span>
+      </div>
     </div>
   </div>
 </div>
@@ -863,11 +881,14 @@
   }
 
   function showGhForm(id) {
-    var form = document.getElementById('ghForm');
-    form.style.display = 'block';
+    var overlay = document.getElementById('ghFormOverlay');
+    overlay.classList.add('visible');
     document.getElementById('ghTestResult').textContent = '';
     document.getElementById('ghTestBtn').disabled = false;
     document.getElementById('ghTestBtn').textContent = 'Test';
+    document.getElementById('ghToken').type = 'password';
+    document.getElementById('ghTokenToggle').innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+    document.getElementById('ghTokenToggle').title = 'Show token';
     if (id) {
       var acct = null;
       for (var i = 0; i < ghAccounts.length; i++) { if (ghAccounts[i].id === id) { acct = ghAccounts[i]; break; } }
@@ -879,7 +900,7 @@
       document.getElementById('ghDisplayName').value = acct.displayName;
       document.getElementById('ghUsername').value = acct.username;
       document.getElementById('ghToken').value = acct.token || '';
-      document.getElementById('ghToken').placeholder = acct.token ? '(unchanged)' : '';
+      document.getElementById('ghToken').placeholder = '';
       onProviderChange();
     } else {
       document.getElementById('ghFormTitle').textContent = 'Add Account';
@@ -896,7 +917,7 @@
   function editGhAccount(id) { showGhForm(id); }
 
   function cancelGhForm() {
-    document.getElementById('ghForm').style.display = 'none';
+    document.getElementById('ghFormOverlay').classList.remove('visible');
   }
 
   function saveGhAccount() {
@@ -906,6 +927,7 @@
     var token = document.getElementById('ghToken').value;
     if (!displayName) { document.getElementById('ghDisplayName').focus(); return; }
     if (!username) { document.getElementById('ghUsername').focus(); return; }
+    if (!token && !id) { document.getElementById('ghToken').focus(); return; }
     var provider = document.getElementById('ghProvider').value;
     var payload = JSON.stringify({ id: id, displayName: displayName, username: username, token: token, provider: provider });
     send(id ? 'editGitHubAccount' : 'addGitHubAccount', payload);
@@ -927,6 +949,20 @@
     } else {
       desc.innerHTML = 'Generate a token at GitHub &rarr; Settings &rarr; Developer settings &rarr; Personal access tokens';
       if (!tokenField.value) tokenField.placeholder = 'ghp_...';
+    }
+  }
+
+  function toggleTokenVis() {
+    var inp = document.getElementById('ghToken');
+    var btn = document.getElementById('ghTokenToggle');
+    if (inp.type === 'password') {
+      inp.type = 'text';
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+      btn.title = 'Hide token';
+    } else {
+      inp.type = 'password';
+      btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+      btn.title = 'Show token';
     }
   }
 

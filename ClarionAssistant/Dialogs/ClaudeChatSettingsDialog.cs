@@ -250,8 +250,7 @@ namespace ClarionAssistant.Dialogs
                 {
                     if (i > 0) sb.Append(",");
                     var a = accounts[i];
-                    // Mask token — send placeholder
-                    string hasToken = !string.IsNullOrEmpty((string)a["token"]) ? "\u2022\u2022\u2022\u2022" : "";
+                    string hasToken = (string)a["token"] ?? "";
                     string provider = a.ContainsKey("provider") ? (string)a["provider"] : "github";
                     sb.AppendFormat("{{\"id\":\"{0}\",\"displayName\":\"{1}\",\"username\":\"{2}\",\"token\":\"{3}\",\"provider\":\"{4}\"}}",
                         EscapeJson((string)a["id"]), EscapeJson((string)a["displayName"]),
@@ -379,6 +378,7 @@ namespace ClarionAssistant.Dialogs
                 string message;
                 try
                 {
+                    System.Net.ServicePointManager.SecurityProtocol |= System.Net.SecurityProtocolType.Tls12;
                     System.Net.HttpWebRequest request;
 
                     if (finalProvider == "bitbucket")
