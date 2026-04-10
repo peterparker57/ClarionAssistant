@@ -1422,7 +1422,18 @@ COMMON QUERIES:
                 Handler = args =>
                 {
                     var results = new List<string>();
-                    string[] searchRoots = { @"H:\Dev", @"H:\DevLaptop" };
+                    // Search common development roots and all fixed drives
+                    var searchRoots = new List<string>();
+                    foreach (var drive in DriveInfo.GetDrives())
+                    {
+                        if (drive.DriveType == DriveType.Fixed && drive.IsReady)
+                        {
+                            string dev = Path.Combine(drive.Name, "Dev");
+                            string devLaptop = Path.Combine(drive.Name, "DevLaptop");
+                            if (Directory.Exists(dev)) searchRoots.Add(dev);
+                            if (Directory.Exists(devLaptop)) searchRoots.Add(devLaptop);
+                        }
+                    }
                     foreach (string root in searchRoots)
                     {
                         if (Directory.Exists(root))
@@ -3037,7 +3048,7 @@ EXAMPLES:
                 Description = "Get ClarionAssistant project info for a folder, including linked GitHub account and repository name. Use this to auto-populate marketplace submissions and GitHub operations instead of asking the user.",
                 InputSchema = McpJsonRpc.BuildSchema(new Dictionary<string, string>
                 {
-                    { "folder", "Project folder path to look up (e.g. H:\\DevLaptop\\ClarionAssistant\\DatePickerWebviewCOM)" }
+                    { "folder", "Project folder path to look up (e.g. C:\\Projects\\MyComControl)" }
                 }),
                 RequiresUiThread = false,
                 Handler = args =>
