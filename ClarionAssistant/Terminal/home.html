@@ -367,6 +367,7 @@ body.light ::-webkit-scrollbar-thumb:hover { background: #acb0be; }
   var projPageSize = 10;
   var projSortCol = 'lastAccessed';
   var projSortDir = 'desc';
+  var defaultProjectFolder = '';
 
   function send(action, data) {
     if (window.chrome && window.chrome.webview)
@@ -541,7 +542,7 @@ body.light ::-webkit-scrollbar-thumb:hover { background: #acb0be; }
       typeEl.value = 'COM Control';
       typeEl.disabled = false;
       nameEl.value = '';
-      folderEl.value = '';
+      folderEl.value = defaultProjectFolder || '';
       ghAcctEl.value = '';
       repoEl.value = '';
     }
@@ -602,6 +603,9 @@ body.light ::-webkit-scrollbar-thumb:hover { background: #acb0be; }
       }
       if (msg.type === 'setTheme') {
         document.body.classList.toggle('light', msg.theme === 'light');
+      }
+      if (msg.type === 'setDefaultProjectFolder') {
+        defaultProjectFolder = msg.folder || '';
       }
       if (msg.type === 'browseResult') {
         if (msg.folder) {

@@ -139,6 +139,13 @@ namespace ClarionAssistant.Terminal
             SendMessage("{\"type\":\"setGitHubAccounts\",\"accounts\":" + jsonArray + "}");
         }
 
+        /// <summary>Send the default project base folder (from COM.ProjectsFolder setting)
+        /// so the Add Project modal can pre-fill its folder input.</summary>
+        public void SetDefaultProjectFolder(string folder)
+        {
+            SendMessage("{\"type\":\"setDefaultProjectFolder\",\"folder\":\"" + EscapeJson(folder ?? "") + "\"}");
+        }
+
         /// <summary>Send folder browse result back to the home page JS.</summary>
         public void SendBrowseResult(string folder, string editId)
         {

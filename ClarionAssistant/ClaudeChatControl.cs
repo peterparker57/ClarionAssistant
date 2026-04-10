@@ -150,6 +150,21 @@ namespace ClarionAssistant
             LoadProjects();
             SendProjectsToHome();
             SendGitHubAccountsToHome();
+            SendDefaultProjectFolderToHome();
+        }
+
+        private void SendDefaultProjectFolderToHome()
+        {
+            if (!_homeView.IsReady) return;
+            try
+            {
+                string folder = _settings.Get("COM.ProjectsFolder") ?? "";
+                _homeView.SetDefaultProjectFolder(folder);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[ClaudeChatControl] SendDefaultProjectFolderToHome error: " + ex.Message);
+            }
         }
 
         private void SendGitHubAccountsToHome()
@@ -1663,6 +1678,7 @@ namespace ClarionAssistant
             {
                 if (parent != null) parent.Enabled = true;
                 SendGitHubAccountsToHome(); // Refresh home dropdown after settings changes
+                SendDefaultProjectFolderToHome(); // COM.ProjectsFolder may have changed
                 dlg.Dispose();
             };
 
