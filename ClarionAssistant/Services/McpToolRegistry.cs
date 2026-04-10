@@ -2024,9 +2024,10 @@ EXAMPLES:
             Register(new McpTool
             {
                 Name = "ingest_docs",
-                Description = @"Ingest documentation files (HTM, HTML, CHM, PDF) into the DocGraph search database.
+                Description = @"Ingest documentation files (HTM, HTML, CHM, PDF, MD) into the DocGraph search database.
 Accepts ANY folder path — scans it recursively for doc files and ingests everything found.
 Also works with a Clarion installation root (auto-discovers docs/, bin/, accessory/Documents/).
+Markdown files are chunked at heading boundaries — great for project docs/ folders and GitHub READMEs.
 If no path is given, auto-detects the Clarion installation.
 Optional vendor parameter sets the vendor name (defaults to the folder name).",
                 InputSchema = McpJsonRpc.BuildSchema(
@@ -2108,7 +2109,7 @@ EXAMPLES:
             Register(new McpTool
             {
                 Name = "discover_docs",
-                Description = "Preview what documentation sources would be ingested from a Clarion installation. Lists all discoverable HTM, CHM, and PDF files without ingesting them. The clarion_root parameter is optional — auto-detects if omitted.",
+                Description = "Preview what documentation sources would be ingested from a Clarion installation. Lists all discoverable HTM, CHM, PDF, and MD files without ingesting them. The clarion_root parameter is optional — auto-detects if omitted.",
                 InputSchema = McpJsonRpc.BuildSchema(
                     new Dictionary<string, string>
                     {

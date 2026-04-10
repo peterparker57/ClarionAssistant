@@ -579,7 +579,7 @@ namespace ClarionAssistant.Dialogs
             using (var dlg = new OpenFileDialog())
             {
                 dlg.Title = "Select Documentation File";
-                dlg.Filter = "Documentation files (*.htm;*.html;*.chm;*.pdf)|*.htm;*.html;*.chm;*.pdf|All files (*.*)|*.*";
+                dlg.Filter = "Documentation files (*.htm;*.html;*.chm;*.pdf;*.md)|*.htm;*.html;*.chm;*.pdf;*.md|All files (*.*)|*.*";
                 if (dlg.ShowDialog(this) == DialogResult.OK)
                 {
                     string msg = "{\"type\":\"browseResult\",\"target\":\"docPath\",\"path\":\"" + EscapeJson(dlg.FileName) + "\"}";
@@ -825,7 +825,7 @@ namespace ClarionAssistant.Dialogs
                         int chunks = e.Result is int ? (int)e.Result : 0;
                         string resultMsg = chunks > 0
                             ? "Imported " + chunks + " chunks"
-                            : "No documentation files found (htm, html, chm, pdf)";
+                            : "No documentation files found (htm, html, chm, pdf, md)";
                         string msg = "{\"type\":\"importDocResult\",\"success\":" + (chunks > 0 ? "true" : "false")
                             + ",\"message\":\"" + EscapeJson(resultMsg) + "\"}";
                         _webView.CoreWebView2.PostWebMessageAsString(msg);

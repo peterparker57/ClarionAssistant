@@ -87,7 +87,7 @@ IMPORTANT: Use `query_codegraph` for cross-file and cross-project questions. Use
 
 ### DocGraph - Third-Party Template Documentation
 - `query_docs` - Search third-party Clarion template documentation using full-text search. Returns method signatures, descriptions, parameters, and code examples ranked by relevance.
-- `ingest_docs` - Ingest documentation from a Clarion installation's `accessory/Documents` folder. Auto-discovers vendors, formats (HTM, CHM, PDF), and chunks docs for search. Run once per Clarion install.
+- `ingest_docs` - Ingest documentation from a Clarion installation's `accessory/Documents` folder. Auto-discovers vendors, formats (HTM, CHM, PDF, MD), and chunks docs for search. Run once per Clarion install.
 - `list_doc_libraries` - List all ingested libraries with chunk counts.
 - `discover_docs` - Preview discoverable doc sources without ingesting.
 - `docgraph_stats` - Get database statistics (library count, chunk breakdown).
