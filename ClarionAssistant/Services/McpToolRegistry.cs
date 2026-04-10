@@ -842,6 +842,91 @@ Use this tool to discover IDE APIs and understand what's available for automatio
                 }
             });
 
+            Register(new McpTool
+            {
+                Name = "get_embeditor_source",
+                Description = "Returns the full annotated PWEE embeditor source. " +
+                    "Editable embed slots are marked «E:N/» (empty) or «E:N»...«/E:N» (filled). " +
+                    "N is the 1-based line number — use it directly as line_number in write_embed_content. " +
+                    "Generated code passes through as context; noise lines (! Start of, ! End of, ! [Priority N], !!!) are stripped. " +
+                    "Use search_embeditor_source for targeted searches to avoid large output.",
+                InputSchema = McpJsonRpc.BuildSchema(new Dictionary<string, string>()),
+                RequiresUiThread = true,
+                Handler = args =>
+                {
+                    var result = _appTree.GetEmbeditorSource();
+                    return result ?? "Error: No PWEE embeditor is currently open.";
+                }
+            });
+
+            Register(new McpTool
+            {
+                Name = "search_embeditor_source",
+                Description = "Search the annotated PWEE embeditor source for lines matching a regex pattern. " +
+                    "Returns only the matching lines and surrounding context — much faster than get_embeditor_source " +
+                    "for finding a specific embed point. Use SPECIFIC patterns (e.g. 'AddCard', 'OPEN.Window') — " +
+                    "broad terms may match too many lines and truncate output. " +
+                    "Overlapping match windows are automatically merged. Output is capped at ~6 KB.",
+                InputSchema = McpJsonRpc.BuildSchema(new Dictionary<string, string>
+                {
+                    { "pattern",       "string"  },
+                    { "context_lines", "integer" }
+                }, new[] { "pattern" }),
+                RequiresUiThread = true,
+                Handler = args =>
+                {
+                    string pattern = McpJsonRpc.GetString(args, "pattern");
+                    if (string.IsNullOrEmpty(pattern)) return "Error: pattern is required.";
+                    int ctx = McpJsonRpc.GetInt(args, "context_lines", 5);
+                    var result = _appTree.SearchEmbeditorSource(pattern, ctx);
+                    return result ?? "Error: No PWEE embeditor is currently open.";
+                }
+            });
+
+            Register(new McpTool
+            {
+                Name = "get_embed_content",
+                Description = "Read the current Clarion code inside a specific embed point identified by its " +
+                    "1-based line number from get_embeditor_source or search_embeditor_source «E:N» tokens. " +
+                    "Use this before write_embed_content when you need to see existing code before rewriting it. " +
+                    "Returns '(empty embed)' if the slot has no user code yet.",
+                InputSchema = McpJsonRpc.BuildSchema(new Dictionary<string, string>
+                {
+                    { "line_number", "integer" }
+                }, new[] { "line_number" }),
+                RequiresUiThread = true,
+                Handler = args =>
+                {
+                    int line = McpJsonRpc.GetInt(args, "line_number", 0);
+                    if (line <= 0) return "Error: line_number is required and must be > 0.";
+                    return _appTree.GetEmbedContent(line);
+                }
+            });
+
+            Register(new McpTool
+            {
+                Name = "write_embed_content",
+                Description = "Write Clarion code into an embed point identified by its 1-based line number " +
+                    "from get_embeditor_source or search_embeditor_source «E:N» tokens. " +
+                    "Pass the complete replacement code — existing content is overwritten. " +
+                    "Indentation is applied automatically from the embed point's column position. " +
+                    "Response reports the line delta: if non-zero, all «E:N» tokens after this line are stale — " +
+                    "call search_embeditor_source or get_embeditor_source again before writing to later embeds.",
+                InputSchema = McpJsonRpc.BuildSchema(new Dictionary<string, string>
+                {
+                    { "line_number", "integer" },
+                    { "code",        "string"  }
+                }, new[] { "line_number", "code" }),
+                RequiresUiThread = true,
+                Handler = args =>
+                {
+                    int line = McpJsonRpc.GetInt(args, "line_number", 0);
+                    if (line <= 0) return "Error: line_number is required and must be > 0.";
+                    string code = McpJsonRpc.GetString(args, "code") ?? string.Empty;
+                    return _appTree.WriteEmbedContentByLine(line, code);
+                }
+            });
+
             // === TXA Export/Import Tools ===
 
             Register(new McpTool
