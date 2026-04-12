@@ -489,15 +489,16 @@ namespace ClarionAssistant.Services
                 return result;
             }
 
-            if (signaled)
+            // Always check the cache — even on timeout. The publish may have arrived
+            // before our forceRefresh Reset() cleared the event (race between the
+            // initial didOpen publish and the re-trigger). Returning pending:true when
+            // the cache has 44 valid entries is the bug this fixes.
+            lock (_diagnosticsLock)
             {
-                lock (_diagnosticsLock)
+                if (_diagnostics.TryGetValue(key, out set) && set.WasPublished)
                 {
-                    if (_diagnostics.TryGetValue(key, out set) && set.WasPublished)
-                    {
-                        result.Entries = new List<DiagnosticEntry>(set.Entries);
-                        result.Pending = false;
-                    }
+                    result.Entries = new List<DiagnosticEntry>(set.Entries);
+                    result.Pending = false;
                 }
             }
 
