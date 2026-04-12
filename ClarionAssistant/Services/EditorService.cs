@@ -23,6 +23,17 @@ namespace ClarionAssistant.Services
     /// </summary>
     public class EditorService
     {
+        /// <summary>
+        /// Normalize line endings to CRLF. The Clarion IDE (and its window designer)
+        /// expects \r\n — bare \n in the buffer causes parse errors when the designer
+        /// reads the buffer without a disk reload.
+        /// </summary>
+        private static string NormalizeCrLf(string text)
+        {
+            if (text == null) return text;
+            return text.Replace("\r\n", "\n").Replace("\n", "\r\n");
+        }
+
         public bool HasActiveTextEditor()
         {
             try { return GetActiveTextArea() != null; }
@@ -106,7 +117,7 @@ namespace ClarionAssistant.Services
                 var insertMethod = document.GetType().GetMethod("Insert", new[] { typeof(int), typeof(string) });
                 if (insertMethod == null) return InsertResult.Failed("Insert method not found");
 
-                insertMethod.Invoke(document, new object[] { offset, text });
+                insertMethod.Invoke(document, new object[] { offset, NormalizeCrLf(text) });
                 SetProperty(caret, "Offset", offset + text.Length);
 
                 try { textArea.GetType().GetMethod("Invalidate", Type.EmptyTypes)?.Invoke(textArea, null); } catch { }
@@ -142,7 +153,7 @@ namespace ClarionAssistant.Services
                     new[] { typeof(int), typeof(int), typeof(string) });
                 if (replaceMethod != null)
                 {
-                    replaceMethod.Invoke(document, new object[] { startOffset, length, newText });
+                    replaceMethod.Invoke(document, new object[] { startOffset, length, NormalizeCrLf(newText) });
                 }
                 else
                 {
@@ -155,7 +166,7 @@ namespace ClarionAssistant.Services
                         return InsertResult.Failed("Replace/Remove method not found");
 
                     removeMethod.Invoke(document, new object[] { startOffset, length });
-                    insertMethod.Invoke(document, new object[] { startOffset, newText });
+                    insertMethod.Invoke(document, new object[] { startOffset, NormalizeCrLf(newText) });
                 }
 
                 // Move caret to end of replacement
@@ -183,6 +194,9 @@ namespace ClarionAssistant.Services
 
                 string content = (GetProperty(document, "TextContent") ?? GetProperty(document, "Text")) as string;
                 if (content == null) return InsertResult.Failed("Cannot read document text");
+
+                oldText = NormalizeCrLf(oldText);
+                newText = NormalizeCrLf(newText);
 
                 if (!content.Contains(oldText))
                     return InsertResult.Failed("Text not found in document");
