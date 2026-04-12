@@ -104,6 +104,7 @@
     <Compile Include="Terminal\WebViewZoomHelper.cs" />
     <Compile Include="Models\MultiTerminalModels.cs" />
     <Compile Include="Services\MultiTerminalApiClient.cs" />
+    <Compile Include="Services\CaAgentIdentity.cs" />
     <Compile Include="Services\ClaudeProcessManager.cs" />
     <Compile Include="TaskLifecycleBoard\TaskLifecycleBoardForm.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

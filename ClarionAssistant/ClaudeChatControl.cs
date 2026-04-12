@@ -43,10 +43,15 @@ namespace ClarionAssistant
         private RedFileService _redFileService;
         private DiffService _diffService;
 
+        // Counter used when a tab's display name is empty, to give the
+        // multiterminal-channel plugin a unique agent name.
+        private int _caTabCounter;
+
         public string CurrentSolutionPath { get { return _currentSlnPath; } }
         public SettingsService Settings { get { return _settings; } }
         public ClarionVersionConfig CurrentVersionConfig { get { return _currentVersionConfig; } }
         public RedFileService RedFile { get { return _redFileService; } }
+        public TabManager TabManager { get { return _tabManager; } }
         public string CurrentDbPath
         {
             get
@@ -2177,6 +2182,10 @@ namespace ClarionAssistant
                 string allowedTools = "mcp__clarion-assistant__*,Read,Edit,Write,Bash,Glob,Grep";
                 if (_mcpServer != null && _mcpServer.IncludeMultiTerminal)
                     allowedTools += ",mcp__multiterminal__*";
+                // Allow the multiterminal-channel plugin's tools when it's loaded
+                // via mcp-config — prefix is different than when loaded as a plugin.
+                if (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
+                    allowedTools += ",mcp__multiterminal-channel__*";
 
                 string pluginArg = "";
                 string pluginDir = GetClarionAssistantPluginPath();
@@ -2198,7 +2207,27 @@ namespace ClarionAssistant
                 }
                 // Set CA tab ID so the statusline script can write per-tab status
                 string tabEnv = $"$env:CLARIONASSISTANT_TAB='{tab.Id}'";
-                string claudeCmd = $"cd '{safeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {colorfgbg}; {claudeBase}{mcpArg}{pluginArg} --strict-mcp-config --allowedTools '{allowedTools}'{extraFlags}";
+
+                // Compute the CA-prefixed agent name + stable docId for this tab and export
+                // them so the multiterminal-channel MCP server (loaded via mcp-config) registers
+                // with the MultiTerminal broker under the right identity.
+                _caTabCounter++;
+                string agentName = Services.CaAgentIdentity.NormalizeAgentName(tab.Name, _caTabCounter);
+                string docId = Services.CaAgentIdentity.ComputeStableDocId(agentName);
+                string safeAgentName = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(agentName);
+                string safeDocId = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(docId);
+                string channelEnv = $"$env:MULTITERMINAL_NAME='{safeAgentName}'; $env:MULTITERMINAL_DOC_ID='{safeDocId}'";
+                System.Diagnostics.Debug.WriteLine(
+                    "[LaunchClaude] Channel identity: name=" + agentName + ", docId=" + docId);
+
+                // Authorize the multiterminal-channel MCP server for inbound channel notifications.
+                // Without this flag, mcp.notification('notifications/claude/channel') is silently ignored.
+                // Using --dangerously-load-development-channels skips the interactive approval prompt,
+                // which is appropriate for a controlled embedded environment where we control which servers load.
+                string channelFlag = (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
+                    ? " --dangerously-load-development-channels server:multiterminal-channel"
+                    : "";
+                string claudeCmd = $"cd '{safeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {channelEnv}; {colorfgbg}; {claudeBase}{mcpArg}{pluginArg} --strict-mcp-config{channelFlag} --allowedTools '{allowedTools}'{extraFlags}";
 
                 if (initialPromptFile != null)
                 {

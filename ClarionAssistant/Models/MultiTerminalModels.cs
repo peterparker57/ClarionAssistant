@@ -83,6 +83,23 @@ namespace ClarionAssistant.Models
         public string Color { get; set; }
         public string DocId { get; set; }
         public bool IsReady { get; set; }
+        public int? ChannelPort { get; set; }
+    }
+
+    public class RegisterTerminalResponse
+    {
+        public string TerminalId { get; set; }
+        public string Name { get; set; }
+        public string DocId { get; set; }
+        public int? ChannelPort { get; set; }
+    }
+
+    public class QueuedMessage
+    {
+        public string From { get; set; }
+        public string Message { get; set; }
+        public string Priority { get; set; }
+        public string Timestamp { get; set; }
     }
 
     // ── Team ─────────────────────────────────────────────────

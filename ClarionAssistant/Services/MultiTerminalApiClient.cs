@@ -221,6 +221,32 @@ namespace ClarionAssistant.Services
             return Get<List<TerminalInfo>>("/api/messaging/terminals");
         }
 
+        /// <summary>
+        /// Register this process as a terminal with the MultiTerminal broker.
+        /// Pass channelPort so the broker can push incoming messages via HTTP POST.
+        /// Returns the broker-assigned terminalId (8-char hex) needed for GetMessages.
+        /// </summary>
+        public ApiResult<RegisterTerminalResponse> RegisterTerminal(string name, string docId, int? channelPort)
+        {
+            var body = new Dictionary<string, object>
+            {
+                { "name", name }
+            };
+            if (!string.IsNullOrEmpty(docId)) body["docId"] = docId;
+            if (channelPort.HasValue) body["channelPort"] = channelPort.Value;
+            return Post<RegisterTerminalResponse>("/api/messaging/register", body);
+        }
+
+        /// <summary>
+        /// Drain the broker-side queue for this terminal.
+        /// NOTE: destructive read — calling this removes messages from the queue.
+        /// Use as a safety-net poll in case deliveries fell through channel push.
+        /// </summary>
+        public ApiResult<List<QueuedMessage>> GetMessages(string terminalId)
+        {
+            return Get<List<QueuedMessage>>(string.Format("/api/messaging/messages/{0}", E(terminalId)));
+        }
+
         /// <summary>Send a message to a specific terminal.</summary>
         public ApiResult<object> SendMessage(string fromTerminalId, string to, string message, string priority = "normal")
         {

@@ -106,6 +106,14 @@ namespace ClarionAssistant.Services
         public bool IncludeMultiTerminal { get; set; }
         public string MultiTerminalMcpPath { get; set; }
 
+        /// <summary>
+        /// True if the multiterminal-channel plugin .mjs file is present on disk.
+        /// Set by GenerateMcpConfig when it successfully resolves the path.
+        /// ClaudeChatControl reads this to decide whether to grant the matching
+        /// tool permissions in --allowedTools.
+        /// </summary>
+        public bool IncludeMultiTerminalChannel { get; private set; }
+
         public string GenerateMcpConfig()
         {
             // Build auto-approve list from all registered tools
@@ -130,7 +138,7 @@ namespace ClarionAssistant.Services
 
             // Conditionally add MultiTerminal
             if (IncludeMultiTerminal && !string.IsNullOrEmpty(MultiTerminalMcpPath)
-                && System.IO.File.Exists(MultiTerminalMcpPath))
+                && File.Exists(MultiTerminalMcpPath))
             {
                 servers["multiterminal"] = new Dictionary<string, object>
                 {
@@ -140,10 +148,63 @@ namespace ClarionAssistant.Services
                 };
             }
 
+            // Add the multiterminal-channel MCP server so the embedded Claude receives
+            // real <channel> notifications. Parent-process env vars MULTITERMINAL_NAME
+            // and MULTITERMINAL_DOC_ID are exported from LaunchClaudeForTab per tab and
+            // inherited by this stdio subprocess. --strict-mcp-config blocks user-level
+            // mcpServers entries, so we must include the channel server here explicitly.
+            string channelPath = ResolveMultiTerminalChannelPath();
+            if (channelPath != null)
+            {
+                servers["multiterminal-channel"] = new Dictionary<string, object>
+                {
+                    { "type", "stdio" },
+                    { "command", "node" },
+                    { "args", new string[] { channelPath } },
+                    { "env", new Dictionary<string, object>
+                        {
+                            // Claude Code expands ${VAR} against its own environment at load time,
+                            // then merges onto the inherited parent env (additive, not replacing).
+                            // Belt + braces: rely on inheritance AND declare the keys explicitly.
+                            { "MT_API_URL", "http://localhost:5050" },
+                            { "MULTITERMINAL_NAME", "${MULTITERMINAL_NAME}" },
+                            { "MULTITERMINAL_DOC_ID", "${MULTITERMINAL_DOC_ID}" }
+                        }
+                    }
+                };
+                IncludeMultiTerminalChannel = true;
+            }
+            else
+            {
+                IncludeMultiTerminalChannel = false;
+            }
+
             return McpJsonRpc.Serialize(new Dictionary<string, object>
             {
                 { "mcpServers", servers }
             });
+        }
+
+        /// <summary>
+        /// Locate multiterminal-channel.mjs on this machine. Resolution order:
+        /// 1. %USERPROFILE%\.claude\plugins\marketplaces\multiterminal-marketplace\plugins\multiterminal\server\multiterminal-channel.mjs
+        /// 2. Return null if not present — caller falls back to channel-disabled mode.
+        /// </summary>
+        private static string ResolveMultiTerminalChannelPath()
+        {
+            try
+            {
+                string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                if (string.IsNullOrEmpty(userProfile)) return null;
+
+                string pluginRoot = Path.Combine(userProfile, ".claude", "plugins", "marketplaces",
+                    "multiterminal-marketplace", "plugins", "multiterminal");
+                string candidate = Path.Combine(pluginRoot, "server", "multiterminal-channel.mjs");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch { }
+            return null;
         }
 
         public string WriteMcpConfigFile()
