@@ -328,8 +328,18 @@
                 return true;
             });
 
-            // Initial fit
-            fitAddon.fit();
+            // Initial fit — use ResizeObserver to handle WebView2 layout race condition.
+            // DOMContentLoaded fires before WinForms finishes sizing the WebView2 control,
+            // so the container may have zero/incorrect dimensions at this point. (#19)
+            const ro = new ResizeObserver(entries => {
+                for (const entry of entries) {
+                    if (entry.contentRect.height > 0 && fitAddon) {
+                        fitAddon.fit();
+                    }
+                }
+            });
+            ro.observe(container);
+            fitAddon.fit(); // also try immediately in case container is already sized
 
             // Custom key handler for Windows-style shortcuts
             term.attachCustomKeyEventHandler((event) => {
