@@ -41,32 +41,43 @@
     letter-spacing: 0.5px;
   }
   .title .icon { margin-right: 6px; }
-  .status {
-    font-size: 11px;
-    color: #6c7086;
-    white-space: nowrap;
+  .title-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
   }
-  .status.connected { color: #a6e3a1; }
-  .status.error { color: #f38ba8; }
 
-  /* Form rows */
-  .form-row {
+  /* Grouped box for Solution + Version */
+  .config-group {
+    border: 1px solid #45475a;
+    border-radius: 6px;
+    padding: 5px 8px;
+    margin-bottom: 4px;
+  }
+  body.light .config-group { border-color: #bcc0cc; }
+
+  .config-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 4px;
-    flex-wrap: wrap;
   }
-  .form-label {
-    font-size: 11px;
+  .config-row + .config-row { margin-top: 4px; }
+
+  .config-label {
+    font-size: 10px;
     color: #7f849c;
-    min-width: 52px;
+    min-width: 48px;
     text-align: right;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
   }
+  body.light .config-label { color: #6c6f85; }
+
+  /* Form controls */
   .form-select {
     flex: 1;
     min-width: 120px;
-    height: 24px;
+    height: 22px;
     background: #313244;
     color: #cdd6f4;
     border: 1px solid #45475a;
@@ -88,8 +99,8 @@
 
   /* Buttons */
   .btn {
-    height: 24px;
-    padding: 0 10px;
+    height: 22px;
+    padding: 0 8px;
     border: 1px solid #45475a;
     border-radius: 4px;
     background: #313244;
@@ -102,15 +113,26 @@
   }
   .btn:hover { background: #45475a; border-color: #585b70; }
   .btn:active { background: #585b70; }
+  .btn:disabled { opacity: 0.4; cursor: default; }
 
   .btn-icon {
-    width: 26px;
+    width: 24px;
+    height: 24px;
     padding: 0;
-    font-size: 14px;
+    font-size: 13px;
     display: flex;
     align-items: center;
     justify-content: center;
+    border: none;
+    background: transparent;
+    color: #7f849c;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.15s;
   }
+  .btn-icon:hover { background: rgba(255,255,255,0.08); color: #cdd6f4; }
+  body.light .btn-icon { color: #5c5f77; }
+  body.light .btn-icon:hover { background: rgba(0,0,0,0.08); color: #4c4f69; }
 
   .btn-primary {
     background: #1e66a8;
@@ -121,179 +143,60 @@
   .btn-primary:hover { background: #2580d4; }
   .btn-primary:active { background: #1e66a8; }
 
-  .btn-accent {
-    color: #89dceb;
-    border-color: rgba(137, 220, 235, 0.3);
+  /* CodeGraph status row */
+  .codegraph-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+    min-height: 24px;
   }
-  .btn-accent:hover { background: rgba(137, 220, 235, 0.1); border-color: rgba(137, 220, 235, 0.5); }
-
-  .index-status {
+  .codegraph-label {
+    font-size: 10px;
+    color: #7f849c;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+  }
+  body.light .codegraph-label { color: #6c6f85; }
+  .codegraph-status {
     font-size: 11px;
     color: #a6e3a1;
-    margin-left: 4px;
-    white-space: nowrap;
-  }
-  .index-status.warning { color: #fab387; }
-  .index-status.active { color: #89b4fa; }
-  .index-status.error { color: #f38ba8; }
-
-  .index-log {
-    display: none;
-    max-height: 120px;
-    overflow-y: auto;
-    background: rgba(0,0,0,0.25);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 4px;
-    padding: 4px 8px;
-    margin-top: 4px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
-    color: #a6adc8;
-    line-height: 1.5;
-  }
-  .index-log.visible { display: block; }
-  .index-log .log-line { white-space: nowrap; }
-  .index-log .log-line:last-child { color: #89b4fa; }
-  body.light .index-log { background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.1); color: #5c5f77; }
-  body.light .index-log .log-line:last-child { color: #1e66f5; }
-
-  /* Divider */
-  .divider {
-    height: 1px;
-    background: #313244;
-    margin: 4px 0;
-  }
-
-  /* Action bar */
-  .action-bar {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-  .action-bar .spacer { flex: 1; }
-
-  /* Light theme overrides */
-  body.light { background: #eff1f5; color: #4c4f69; }
-  body.light .title { color: #1e66f5; }
-  body.light .status { color: #8c8fa1; }
-  body.light .status.connected { color: #40a02b; }
-  body.light .status.error { color: #d20f39; }
-  body.light .form-label { color: #6c6f85; }
-  body.light .form-select {
-    background-color: #e6e9ef; color: #4c4f69; border-color: #bcc0cc;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238c8fa1'/%3E%3C/svg%3E");
-  }
-  body.light .form-select:hover { border-color: #acb0be; }
-  body.light .form-select:focus { border-color: #1e66f5; }
-  body.light .btn { border-color: #bcc0cc; background-color: #e6e9ef; color: #4c4f69; }
-  body.light .btn:hover { background-color: #ccd0da; border-color: #acb0be; }
-  body.light .btn:active { background-color: #bcc0cc; }
-  body.light .btn-primary { background-color: #1e66f5; border-color: #1e66f5; color: #fff; }
-  body.light .btn-primary:hover { background-color: #3b8cf8; }
-  body.light .btn-primary:active { background-color: #1e66f5; }
-  body.light .btn-accent { color: #04a5e5; border-color: rgba(4,165,229,0.3); }
-  body.light .btn-accent:hover { background: rgba(4,165,229,0.1); border-color: rgba(4,165,229,0.5); }
-  body.light .index-status { color: #40a02b; }
-  body.light .index-status.warning { color: #fe640b; }
-  body.light .index-status.active { color: #1e66f5; }
-  body.light .index-status.error { color: #d20f39; }
-  body.light .divider { background: #ccd0da; }
-
-  /* LSP diagnostics + activity row */
-  .lsp-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 8px;
-    font-size: 11px;
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    min-height: 20px;
-  }
-  .diagnostics-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 1px 8px;
-    border-radius: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    white-space: nowrap;
-    transition: all 0.15s;
-    position: relative;
-  }
-  .diagnostics-pill.clean { background: rgba(166,227,161,0.15); color: #a6e3a1; }
-  .diagnostics-pill.warnings { background: rgba(250,179,135,0.15); color: #fab387; }
-  .diagnostics-pill.errors { background: rgba(243,139,168,0.2); color: #f38ba8; }
-  .diagnostics-pill:hover { filter: brightness(1.2); }
-  .diagnostics-pill .pill-icon { font-size: 9px; }
-  body.light .diagnostics-pill.clean { background: rgba(64,160,43,0.12); color: #40a02b; }
-  body.light .diagnostics-pill.warnings { background: rgba(254,100,11,0.12); color: #fe640b; }
-  body.light .diagnostics-pill.errors { background: rgba(210,15,57,0.15); color: #d20f39; }
-
-  .lsp-activity {
-    display: flex;
-    align-items: center;
-    gap: 6px;
     flex: 1;
-    overflow: hidden;
-    color: #585b70;
-  }
-  .lsp-activity-item {
     white-space: nowrap;
-    opacity: 0.7;
-    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .lsp-activity-item:first-child { opacity: 1; color: #7f849c; }
-  body.light .lsp-activity { color: #9ca0b0; }
-  body.light .lsp-activity-item:first-child { color: #6c6f85; }
+  .codegraph-status.active { color: #89b4fa; }
+  .codegraph-status.warning { color: #fab387; }
+  .codegraph-status.error { color: #f38ba8; }
+  body.light .codegraph-status { color: #40a02b; }
+  body.light .codegraph-status.active { color: #1e66f5; }
+  body.light .codegraph-status.warning { color: #fe640b; }
+  body.light .codegraph-status.error { color: #d20f39; }
 
-  /* Diagnostics popup */
-  .diagnostics-popup {
-    display: none;
-    position: absolute;
-    top: 100%;
-    left: 0;
-    z-index: 100;
-    background: #1e1e2e;
-    border: 1px solid #45475a;
-    border-radius: 6px;
-    padding: 4px 0;
-    min-width: 340px;
-    max-height: 220px;
-    overflow-y: auto;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
-    font-family: 'Cascadia Code', 'Consolas', monospace;
-    font-size: 11px;
+  /* Spinner */
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border: 2px solid rgba(137, 180, 250, 0.3);
+    border-top-color: #89b4fa;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 5px;
+    vertical-align: middle;
   }
-  .diagnostics-popup.visible { display: block; }
-  .diag-entry {
-    padding: 3px 10px;
-    cursor: pointer;
-    display: flex;
-    gap: 6px;
-    align-items: baseline;
-  }
-  .diag-entry:hover { background: #313244; }
-  .diag-line { color: #89b4fa; min-width: 36px; text-align: right; }
-  .diag-msg { color: #cdd6f4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .diag-sev-1 .diag-msg { color: #f38ba8; }
-  .diag-sev-2 .diag-msg { color: #fab387; }
-  .diag-sev-3 .diag-msg { color: #89b4fa; }
-  body.light .diagnostics-popup { background: #eff1f5; border-color: #ccd0da; }
-  body.light .diag-entry:hover { background: #e6e9ef; }
-  body.light .diag-line { color: #1e66f5; }
-  body.light .diag-msg { color: #4c4f69; }
-  body.light .diag-sev-1 .diag-msg { color: #d20f39; }
-  body.light .diag-sev-2 .diag-msg { color: #fe640b; }
-  body.light .diag-sev-3 .diag-msg { color: #1e66f5; }
+  body.light .spinner { border-color: rgba(30, 102, 245, 0.3); border-top-color: #1e66f5; }
+
 
   /* Tab bar */
   .tab-bar {
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    padding: 4px 0 0 0;
+    padding: 2px 0 0 0;
     overflow-x: auto;
     overflow-y: hidden;
     min-height: 26px;
@@ -341,7 +244,21 @@
   .tab:hover .close-btn { opacity: 0.5; }
   .tab .close-btn:hover { opacity: 1; color: #f38ba8; background: rgba(243,139,168,0.1); }
 
-  /* Light tab overrides */
+  /* Light theme overrides */
+  body.light { background: #eff1f5; color: #4c4f69; }
+  body.light .title { color: #1e66f5; }
+  body.light .form-select {
+    background-color: #e6e9ef; color: #4c4f69; border-color: #bcc0cc;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%238c8fa1'/%3E%3C/svg%3E");
+  }
+  body.light .form-select:hover { border-color: #acb0be; }
+  body.light .form-select:focus { border-color: #1e66f5; }
+  body.light .btn { border-color: #bcc0cc; background-color: #e6e9ef; color: #4c4f69; }
+  body.light .btn:hover { background-color: #ccd0da; border-color: #acb0be; }
+  body.light .btn:active { background-color: #bcc0cc; }
+  body.light .btn-primary { background-color: #1e66f5; border-color: #1e66f5; color: #fff; }
+  body.light .btn-primary:hover { background-color: #3b8cf8; }
+  body.light .btn-primary:active { background-color: #1e66f5; }
   body.light .tab { background: #dce0e8; border-color: #ccd0da; color: #8c8fa1; }
   body.light .tab:hover { background: #ccd0da; color: #5c5f77; }
   body.light .tab.active { background: #eff1f5; color: #4c4f69; border-color: #acb0be; }
@@ -354,52 +271,43 @@
     <!-- Title row -->
     <div class="title-row">
       <span class="title"><span class="icon">&#9670;</span>Clarion Assistant</span>
-      <span id="status" class="status">Starting...</span>
+      <div class="title-actions">
+        <button class="btn-icon" onclick="send('cheatSheet')" title="Cheat Sheet">&#128214;</button>
+        <button class="btn-icon" onclick="send('docs')" title="Documentation">&#128195;</button>
+        <button class="btn-icon" onclick="send('settings')" title="Settings">&#9881;</button>
+        <button class="btn-icon" id="btnTheme" onclick="toggleTheme()" title="Toggle light/dark theme">&#9790;</button>
+      </div>
     </div>
 
-    <!-- Version row -->
-    <div class="form-row">
-      <span class="form-label">Version</span>
-      <select id="versionSelect" class="form-select"></select>
-      <button class="btn btn-icon" onclick="send('refresh')" title="Detect from IDE">&#8635;</button>
+    <!-- Solution + Version grouped -->
+    <div class="config-group">
+      <div class="config-row">
+        <span class="config-label">Solution</span>
+        <select id="solutionSelect" class="form-select"></select>
+        <button class="btn-icon" onclick="send('browse')" title="Browse for solution">&#8230;</button>
+      </div>
+      <div class="config-row">
+        <span class="config-label">Version</span>
+        <select id="versionSelect" class="form-select"></select>
+        <button class="btn-icon" onclick="send('refresh')" title="Detect Clarion version from IDE">&#8635;</button>
+      </div>
     </div>
 
-    <!-- Solution row -->
-    <div class="form-row">
-      <span class="form-label">Solution</span>
-      <select id="solutionSelect" class="form-select"></select>
-      <button class="btn btn-icon" onclick="send('browse')" title="Browse for solution">&#8230;</button>
-      <button class="btn btn-primary" onclick="send('fullIndex')" id="btnFullIndex">Full Index</button>
-      <button class="btn" onclick="send('updateIndex')" id="btnUpdate">Update</button>
-      <span id="indexStatus" class="index-status"></span>
-    </div>
-    <div id="indexLog" class="index-log"></div>
-
-    <div class="divider"></div>
-
-    <!-- LSP diagnostics + activity row (hidden until LSP data arrives) -->
-    <div id="lspRow" class="lsp-row" style="display:none">
-      <span id="diagnosticsPill" class="diagnostics-pill clean" onclick="toggleDiagPopup()" style="position:relative">
-        <span id="diagText"><span class="pill-icon">&#10003;</span> OK</span>
-        <div id="diagPopup" class="diagnostics-popup"></div>
-      </span>
-      <div id="lspActivity" class="lsp-activity"></div>
+    <!-- CodeGraph status row -->
+    <div class="codegraph-row">
+      <span class="codegraph-label">CodeGraph</span>
+      <span id="indexStatus" class="codegraph-status"></span>
+      <button class="btn btn-primary" onclick="send('fullIndex')" id="btnFullIndex" title="Rebuild entire index from scratch">Reindex</button>
+      <button class="btn" onclick="send('updateIndex')" id="btnUpdate" title="Index changed files only">Update</button>
+      <button class="btn-icon" onclick="send('showLog')" id="btnLog" title="Show activity log" style="font-size:12px;">&#128220;</button>
     </div>
 
-    <!-- Action bar -->
-    <div class="action-bar">
-      <span class="spacer"></span>
-      <button class="btn btn-icon" onclick="send('cheatSheet')" title="Cheat Sheet">&#128214;</button>
-      <button class="btn btn-icon" onclick="send('docs')" title="Documentation">&#128195;</button>
-      <button class="btn btn-icon" onclick="send('settings')" title="Settings">&#9881;</button>
-      <button class="btn btn-icon" id="btnTheme" onclick="toggleTheme()" title="Toggle light/dark theme">&#9790;</button>
-    </div>
-
+    <!-- Tab bar -->
+    <div id="tabBar" class="tab-bar"></div>
   </div>
 
 <script>
   var currentTheme = 'dark';
-
   function send(action, data) {
     window.chrome.webview.postMessage(JSON.stringify({ action: action, data: data || null }));
   }
@@ -455,19 +363,6 @@
     if (active) active.classList.add('active');
   }
 
-  function toggleDiagPopup() {
-    var popup = document.getElementById('diagPopup');
-    popup.classList.toggle('visible');
-  }
-  // Close popup when clicking outside
-  document.addEventListener('click', function(e) {
-    var popup = document.getElementById('diagPopup');
-    var pill = document.getElementById('diagnosticsPill');
-    if (popup && pill && !pill.contains(e.target)) {
-      popup.classList.remove('visible');
-    }
-  });
-
   function escapeHtml(s) {
     if (!s) return '';
     return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -502,36 +397,20 @@
     }
 
     if (msg.type === 'setStatus') {
-      var el = document.getElementById('status');
-      el.textContent = msg.text;
-      el.className = 'status ' + (msg.css || '');
+      // Status no longer displayed (MCP info removed) — ignore silently
     }
 
     if (msg.type === 'setIndexStatus') {
       var el = document.getElementById('indexStatus');
-      el.textContent = msg.text;
-      el.className = 'index-status ' + (msg.css || '');
+      var text = msg.text || '';
+      var isActive = (msg.css || '').indexOf('active') >= 0;
+      el.innerHTML = (isActive ? '<span class="spinner"></span>' : '') + escapeHtml(text);
+      el.className = 'codegraph-status ' + (msg.css || '');
     }
 
     if (msg.type === 'setIndexButtons') {
       document.getElementById('btnFullIndex').disabled = !msg.enabled;
       document.getElementById('btnUpdate').disabled = !msg.enabled;
-    }
-
-    if (msg.type === 'appendIndexLog') {
-      var log = document.getElementById('indexLog');
-      log.classList.add('visible');
-      var line = document.createElement('div');
-      line.className = 'log-line';
-      line.textContent = msg.text;
-      log.appendChild(line);
-      log.scrollTop = log.scrollHeight;
-    }
-
-    if (msg.type === 'clearIndexLog') {
-      var log = document.getElementById('indexLog');
-      log.innerHTML = '';
-      log.classList.remove('visible');
     }
 
     if (msg.type === 'setTheme') {
@@ -544,52 +423,6 @@
 
     if (msg.type === 'setActiveTab') {
       highlightActiveTab(msg.tabId);
-    }
-
-    if (msg.type === 'setDiagnostics') {
-      var row = document.getElementById('lspRow');
-      var pill = document.getElementById('diagnosticsPill');
-      var text = document.getElementById('diagText');
-      var popup = document.getElementById('diagPopup');
-      if (msg.hidden) {
-        row.style.display = 'none';
-        return;
-      }
-      row.style.display = 'flex';
-      var e = msg.errors || 0;
-      var w = msg.warnings || 0;
-      if (e > 0) {
-        pill.className = 'diagnostics-pill errors';
-        text.innerHTML = '<span class="pill-icon">&#9679;</span> ' + e + 'E' + (w > 0 ? ' ' + w + 'W' : '');
-      } else if (w > 0) {
-        pill.className = 'diagnostics-pill warnings';
-        text.innerHTML = '<span class="pill-icon">&#9679;</span> ' + w + 'W';
-      } else {
-        pill.className = 'diagnostics-pill clean';
-        text.innerHTML = '<span class="pill-icon">&#10003;</span> OK';
-      }
-      // Build popup entries
-      var entries = msg.entries || [];
-      var html = '';
-      for (var i = 0; i < entries.length && i < 50; i++) {
-        var d = entries[i];
-        html += '<div class="diag-entry diag-sev-' + (d.severity || 1) + '" onclick="send(\'diagnosticClick\',\'' + (d.line || 0) + '\')">' +
-          '<span class="diag-line">L' + ((d.line || 0) + 1) + '</span>' +
-          '<span class="diag-msg">' + escapeHtml(d.message || '') + '</span></div>';
-      }
-      popup.innerHTML = html || '<div style="padding:6px 10px;color:#585b70">No diagnostics</div>';
-    }
-
-    if (msg.type === 'setLspActivity') {
-      var row = document.getElementById('lspRow');
-      var el = document.getElementById('lspActivity');
-      row.style.display = 'flex';
-      var items = msg.items || [];
-      var html = '';
-      for (var i = 0; i < items.length; i++) {
-        html += '<span class="lsp-activity-item">' + escapeHtml(items[i]) + '</span>';
-      }
-      el.innerHTML = html;
     }
   });
 </script>

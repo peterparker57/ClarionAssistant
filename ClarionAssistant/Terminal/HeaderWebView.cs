@@ -1,10 +1,8 @@
 using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Windows.Forms;
-using ClarionAssistant.Services;
 using Microsoft.Web.WebView2.Core;
 using Microsoft.Web.WebView2.WinForms;
 
@@ -22,6 +20,7 @@ namespace ClarionAssistant.Terminal
         private WebView2 _webView;
         private bool _isInitialized;
         private bool _isInitializing;
+        private readonly System.Collections.Generic.List<string> _logLines = new System.Collections.Generic.List<string>();
 
         public event EventHandler<HeaderActionEventArgs> ActionReceived;
         public event EventHandler HeaderReady;
@@ -32,7 +31,7 @@ namespace ClarionAssistant.Terminal
         {
             SuspendLayout();
             BackColor = Color.FromArgb(30, 30, 46);
-            Height = 130;
+            Height = 110;
             Dock = DockStyle.Top;
 
             _webView = new WebView2 { Dock = DockStyle.Fill, Name = "headerWebView" };
@@ -179,76 +178,32 @@ namespace ClarionAssistant.Terminal
             SendMessage("{\"type\":\"setIndexStatus\",\"text\":\"" + EscapeJson(text) + "\",\"css\":\"" + EscapeJson(cssClass) + "\"}");
         }
 
-        /// <summary>Append a line to the index progress log.</summary>
+        /// <summary>Fired when a new log line is appended (for live updates).</summary>
+        public event EventHandler<string> LogLineAppended;
+
+        /// <summary>Append a line to the index progress log (accumulated in memory).</summary>
         public void AppendIndexLog(string text)
         {
-            SendMessage("{\"type\":\"appendIndexLog\",\"text\":\"" + EscapeJson(text) + "\"}");
+            _logLines.Add(text);
+            LogLineAppended?.Invoke(this, text);
         }
 
-        /// <summary>Clear and hide the index progress log.</summary>
+        /// <summary>Clear the index progress log.</summary>
         public void ClearIndexLog()
         {
-            SendMessage("{\"type\":\"clearIndexLog\"}");
+            _logLines.Clear();
+        }
+
+        /// <summary>Get accumulated log lines and clear the buffer.</summary>
+        public string[] GetLogLines()
+        {
+            return _logLines.ToArray();
         }
 
         /// <summary>Enable or disable the index buttons.</summary>
         public void SetIndexButtonsEnabled(bool enabled)
         {
             SendMessage("{\"type\":\"setIndexButtons\",\"enabled\":" + (enabled ? "true" : "false") + "}");
-        }
-
-        /// <summary>
-        /// Update the diagnostics pill. errors/warnings are counts for the active file.
-        /// Entries are the individual diagnostic items for the popup.
-        /// Pass hidden=true to hide the row when LSP is not available.
-        /// </summary>
-        public void SetDiagnosticsCount(int errors, int warnings, List<LspClient.DiagnosticEntry> entries, bool hidden = false)
-        {
-            if (hidden)
-            {
-                SendMessage("{\"type\":\"setDiagnostics\",\"hidden\":true}");
-                return;
-            }
-            var sb = new System.Text.StringBuilder();
-            sb.Append("{\"type\":\"setDiagnostics\",\"errors\":");
-            sb.Append(errors);
-            sb.Append(",\"warnings\":");
-            sb.Append(warnings);
-            sb.Append(",\"entries\":[");
-            if (entries != null)
-            {
-                for (int i = 0; i < entries.Count && i < 50; i++)
-                {
-                    if (i > 0) sb.Append(",");
-                    var e = entries[i];
-                    sb.AppendFormat("{{\"severity\":{0},\"line\":{1},\"message\":\"{2}\"}}",
-                        e.Severity, e.Line, EscapeJson(e.Message ?? ""));
-                }
-            }
-            sb.Append("]}");
-            SendMessage(sb.ToString());
-        }
-
-        /// <summary>
-        /// Update the LSP activity strip. Items are recent tool:target strings
-        /// like "hover: UpdateProducts", "refs: SilentRunning", etc.
-        /// </summary>
-        public void SetLspActivity(string[] items)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append("{\"type\":\"setLspActivity\",\"items\":[");
-            if (items != null)
-            {
-                for (int i = 0; i < items.Length; i++)
-                {
-                    if (i > 0) sb.Append(",");
-                    sb.Append("\"");
-                    sb.Append(EscapeJson(items[i] ?? ""));
-                    sb.Append("\"");
-                }
-            }
-            sb.Append("]}");
-            SendMessage(sb.ToString());
         }
 
         /// <summary>Switch the header between light and dark theme.</summary>

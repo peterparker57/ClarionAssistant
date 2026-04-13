@@ -23,7 +23,7 @@ namespace ClarionAssistant
         // Header (WebView2)
         private HeaderWebView _header;
         private Splitter _splitter;
-        private int _preIndexHeaderHeight = -1;
+        private Form _logForm;
 
         private McpServer _mcpServer;
         private McpToolRegistry _toolRegistry;
@@ -47,12 +47,15 @@ namespace ClarionAssistant
         // multiterminal-channel plugin a unique agent name.
         private int _caTabCounter;
 
-        // LSP UI state: diagnostics pill + activity strip
+        // LSP UI state: bottom status bar + stay-on-top diagnostics form
         private System.Windows.Forms.Timer _lspUiTimer;
+        private Terminal.LspStatusBar _lspStatusBar;
+        private Dialogs.DiagnosticsForm _diagForm;
         private readonly List<string> _lspActivityBuffer = new List<string>();
         private string _lastDiagFile;
         private int _lastDiagErrors = -1;
         private int _lastDiagWarnings = -1;
+        private List<Services.LspClient.DiagnosticEntry> _lastDiagEntries;
 
         public string CurrentSolutionPath { get { return _currentSlnPath; } }
         public SettingsService Settings { get { return _settings; } }
@@ -126,6 +129,11 @@ namespace ClarionAssistant
             _homeView = new HomeWebView();
             _homeView.ActionReceived += OnHomeAction;
             _homeView.HomeReady += OnHomeReady;
+
+            // === LSP status bar (bottom of terminal content area) ===
+            _lspStatusBar = new Terminal.LspStatusBar();
+            _lspStatusBar.DiagnosticsClicked += OnDiagnosticsBarClicked;
+            _contentArea.Controls.Add(_lspStatusBar);
 
             // === Tab manager ===
             _tabManager = new TabManager(_tabStrip, _contentArea);
@@ -269,21 +277,7 @@ namespace ClarionAssistant
                 case "themeChanged": OnThemeChanged(e.Data); break;
                 case "cheatSheet": OnCheatSheet(); break;
                 case "docs": OnDocs(); break;
-                case "diagnosticClick": OnDiagnosticClick(e.Data); break;
-            }
-        }
-
-        private void OnDiagnosticClick(string lineStr)
-        {
-            int line;
-            if (!string.IsNullOrEmpty(lineStr) && int.TryParse(lineStr, out line))
-            {
-                try
-                {
-                    // LSP lines are 0-based; go_to_line is 1-based
-                    _editorService.GoToLine(line + 1);
-                }
-                catch { }
+                case "showLog": ShowIndexLog(); break;
             }
         }
 
@@ -818,7 +812,7 @@ namespace ClarionAssistant
         private string _lastStatusLineJson;
         private string _lastStatusLineTabId;
 
-        // ── LSP UI polling: diagnostics pill + activity strip ──────────────
+        // ── LSP UI: bottom status bar + stay-on-top diagnostics form ─────
 
         private bool _lspEventWired;
 
@@ -826,7 +820,7 @@ namespace ClarionAssistant
         {
             try
             {
-                if (_header == null || !_header.IsReady) return;
+                if (_lspStatusBar == null) return;
 
                 // Wire up the OnLspRequest event once the LspClient is available
                 var lsp = _toolRegistry?.LspClientInstance;
@@ -838,7 +832,7 @@ namespace ClarionAssistant
 
                 if (lsp == null || !lsp.IsRunning)
                 {
-                    _header.SetDiagnosticsCount(0, 0, null, hidden: true);
+                    _lspStatusBar.SetDiagnostics(0, 0, hidden: true);
                     return;
                 }
 
@@ -846,7 +840,7 @@ namespace ClarionAssistant
                 string filePath = lsp.LastActiveFilePath;
                 if (string.IsNullOrEmpty(filePath))
                 {
-                    _header.SetDiagnosticsCount(0, 0, null, hidden: true);
+                    _lspStatusBar.SetDiagnostics(0, 0, hidden: true);
                     return;
                 }
 
@@ -877,7 +871,12 @@ namespace ClarionAssistant
                     _lastDiagFile = filePath;
                     _lastDiagErrors = errors;
                     _lastDiagWarnings = warnings;
-                    _header.SetDiagnosticsCount(errors, warnings, entries);
+                    _lastDiagEntries = entries;
+                    _lspStatusBar.SetDiagnostics(errors, warnings, hidden: false);
+
+                    // Update the diagnostics form if it's visible
+                    if (_diagForm != null && _diagForm.Visible)
+                        _diagForm.UpdateDiagnostics(filePath, entries);
                 }
             }
             catch (Exception ex)
@@ -902,17 +901,33 @@ namespace ClarionAssistant
                         _lspActivityBuffer.RemoveAt(5);
                 }
 
-                // Marshal to UI thread to update the header
-                if (!IsDisposed && !_header.IsDisposed)
+                // Marshal to UI thread to update the status bar
+                if (!IsDisposed && _lspStatusBar != null)
                 {
                     string[] snapshot;
                     lock (_lspActivityBuffer) { snapshot = _lspActivityBuffer.ToArray(); }
-                    try { BeginInvoke((Action)(() => _header.SetLspActivity(snapshot))); }
+                    try { BeginInvoke((Action)(() => _lspStatusBar.SetActivity(snapshot))); }
                     catch (ObjectDisposedException) { }
                     catch (InvalidOperationException) { }
                 }
             }
             catch { }
+        }
+
+        private void OnDiagnosticsBarClicked(object sender, EventArgs e)
+        {
+            if (_diagForm == null)
+            {
+                _diagForm = new Dialogs.DiagnosticsForm(
+                    line => _editorService.GoToLine(line),
+                    () => _lastDiagEntries);
+                _diagForm.ApplyTheme(_isDarkTheme);
+            }
+            _diagForm.UpdateDiagnostics(_lastDiagFile, _lastDiagEntries);
+            if (!_diagForm.Visible)
+                _diagForm.Show(this);
+            else
+                _diagForm.BringToFront();
         }
 
         private void PollStatusLine()
@@ -1673,11 +1688,6 @@ namespace ClarionAssistant
 
             _header.ClearIndexLog();
 
-            // Expand header so the progress log is visible
-            _preIndexHeaderHeight = _header.Height;
-            if (_header.Height < 300)
-                _header.Height = 300;
-
             var worker = new BackgroundWorker();
             worker.WorkerReportsProgress = true;
             worker.DoWork += (s, e) =>
@@ -1711,15 +1721,103 @@ namespace ClarionAssistant
 
                 if (e.Error != null)
                     _header.SetIndexStatus("Error: " + e.Error.Message, "error");
-
-                // Restore header to its pre-index height
-                if (_preIndexHeaderHeight > 0)
-                {
-                    _header.Height = _preIndexHeaderHeight;
-                    _preIndexHeaderHeight = -1;
-                }
             };
             worker.RunWorkerAsync();
+        }
+
+        private System.Windows.Forms.TextBox _logTextBox;
+
+        private void ShowIndexLog()
+        {
+            if (_logForm != null && !_logForm.IsDisposed)
+            {
+                RefreshLogContent();
+                _logForm.BringToFront();
+                return;
+            }
+
+            string slnName = !string.IsNullOrEmpty(_currentSlnPath)
+                ? Path.GetFileNameWithoutExtension(_currentSlnPath)
+                : "No solution";
+
+            var headerLabel = new Label
+            {
+                Text = "CodeGraph log for: " + slnName,
+                Dock = DockStyle.Top,
+                Height = 24,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Padding = new Padding(6, 0, 0, 0),
+                Font = new Font("Segoe UI", 9f, FontStyle.Bold)
+            };
+
+            _logTextBox = new System.Windows.Forms.TextBox
+            {
+                Multiline = true,
+                ReadOnly = true,
+                Dock = DockStyle.Fill,
+                ScrollBars = ScrollBars.Both,
+                WordWrap = false,
+                Font = new Font("Cascadia Code", 9f)
+            };
+
+            if (_isDarkTheme)
+            {
+                headerLabel.BackColor = Color.FromArgb(40, 40, 58);
+                headerLabel.ForeColor = Color.FromArgb(137, 180, 250);
+                _logTextBox.BackColor = Color.FromArgb(30, 30, 46);
+                _logTextBox.ForeColor = Color.FromArgb(166, 173, 200);
+            }
+
+            _logForm = new Form
+            {
+                Text = "CodeGraph Activity Log",
+                Width = 600,
+                Height = 350,
+                StartPosition = FormStartPosition.Manual,
+                ShowInTaskbar = false,
+                FormBorderStyle = FormBorderStyle.SizableToolWindow
+            };
+            _logForm.Controls.Add(_logTextBox);
+            _logForm.Controls.Add(headerLabel);
+
+            // Center on this control's screen position
+            var screenBounds = RectangleToScreen(ClientRectangle);
+            _logForm.Location = new Point(
+                screenBounds.Left + (screenBounds.Width - _logForm.Width) / 2,
+                screenBounds.Top + (screenBounds.Height - _logForm.Height) / 2);
+
+            _logForm.FormClosed += (s, ev) =>
+            {
+                _logTextBox = null;
+                _logForm = null;
+            };
+
+            _header.LogLineAppended += OnLogLineAppended;
+
+            RefreshLogContent();
+            _logForm.Show(FindForm());
+        }
+
+        private void RefreshLogContent()
+        {
+            if (_logTextBox == null || _logTextBox.IsDisposed) return;
+            var lines = _header.GetLogLines();
+            _logTextBox.Text = lines.Length > 0 ? string.Join(Environment.NewLine, lines) : "(No log entries)";
+            _logTextBox.SelectionStart = _logTextBox.TextLength;
+            _logTextBox.ScrollToCaret();
+        }
+
+        private void OnLogLineAppended(object sender, string line)
+        {
+            if (_logTextBox == null || _logTextBox.IsDisposed) return;
+            if (_logTextBox.InvokeRequired)
+            {
+                _logTextBox.BeginInvoke((Action<object, string>)OnLogLineAppended, sender, line);
+                return;
+            }
+            if (_logTextBox.TextLength > 0)
+                _logTextBox.AppendText(Environment.NewLine);
+            _logTextBox.AppendText(line);
         }
 
         #endregion
@@ -1754,6 +1852,8 @@ namespace ClarionAssistant
             _splitter.BackColor = _isDarkTheme ? Color.FromArgb(49, 50, 68) : Color.FromArgb(204, 208, 218);
             if (_tabStrip != null) _tabManager?.ApplyTheme(_isDarkTheme);
             if (_contentArea != null) _contentArea.BackColor = _isDarkTheme ? Color.FromArgb(12, 12, 12) : Color.White;
+            if (_lspStatusBar != null) _lspStatusBar.ApplyTheme(_isDarkTheme);
+            if (_diagForm != null) _diagForm.ApplyTheme(_isDarkTheme);
         }
 
         private float GetFontSize()
@@ -2695,6 +2795,7 @@ namespace ClarionAssistant
                 if (_mcpServer != null) _mcpServer.Dispose();
                 if (_knowledgeService != null) _knowledgeService.Dispose();
                 if (_lspUiTimer != null) { _lspUiTimer.Stop(); _lspUiTimer.Dispose(); }
+                if (_diagForm != null) { try { _diagForm.Close(); _diagForm.Dispose(); } catch { } }
                 if (_instanceStateTimer != null) { _instanceStateTimer.Stop(); _instanceStateTimer.Dispose(); }
                 if (_statusLineTimer != null) { _statusLineTimer.Stop(); _statusLineTimer.Dispose(); }
                 if (_instanceCoord != null) _instanceCoord.Dispose();

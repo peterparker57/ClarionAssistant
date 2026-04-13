@@ -65,6 +65,10 @@ body {
   margin-bottom: 12px;
 }
 .section-title { font-size: 14px; font-weight: 600; color: #a6adc8; }
+.section-subtitle { font-size: 11px; color: #6c7086; margin-top: 2px; }
+.section-divider { height: 1px; background: #313244; margin: 16px 0; }
+body.light .section-subtitle { color: #8c8fa1; }
+body.light .section-divider { background: #ccd0da; }
 
 /* Buttons */
 .btn {
@@ -273,9 +277,14 @@ body.light ::-webkit-scrollbar-thumb:hover { background: #acb0be; }
     </div>
   </div>
 
+  <div class="section-divider"></div>
+
   <!-- Projects Section -->
   <div class="section-header">
-    <div class="section-title">Projects</div>
+    <div>
+      <div class="section-title">Clarion COM and Addin Projects</div>
+      <div class="section-subtitle">Create your own Clarion COM and/or Addin projects here</div>
+    </div>
     <button class="btn btn-primary" onclick="openProjectModal()">&#43; Add Project</button>
   </div>
 
@@ -312,7 +321,7 @@ body.light ::-webkit-scrollbar-thumb:hover { background: #acb0be; }
   </div>
 
   <div id="projEmptyState" class="empty-state" style="display:none;">
-    No projects yet. Click "Add Project" to create one.
+    No projects yet. Click "Add Project" to create a COM control or Addin.
   </div>
 </div>
 
