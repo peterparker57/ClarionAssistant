@@ -236,26 +236,31 @@ Clarion Assistant exposes **90+ MCP tools** that Claude uses to interact with th
 
 ## Claude Code Skills
 
-The installer includes 20+ Clarion-specific skills for Claude Code (installed as a plugin):
+The installer includes 21 Clarion-specific skills for Claude Code (installed as a plugin):
 
 | Skill | Description |
 |---|---|
 | `clarion` | Clarion language reference &mdash; syntax, data types, control structures, Windows API patterns |
 | `clarion-ide-addin` | IDE addin development with SharpDevelop integration |
-| `ClarionCOM` | Interactive COM development assistant |
-| `clarioncom-create` | Create new C# COM control projects from scratch |
-| `clarioncom-build` | Build COM projects with MSBuild |
-| `clarioncom-validate` | Validate RegFree COM compliance |
-| `clarioncom-deploy` | Generate deployment artifacts |
-| `clarioncom-webview2-*` | WebView2-based COM control suite (create, build, validate, deploy) |
-| `clarioncom-config` | Manage ClarionCOM settings |
-| `clarioncom-get` | Download controls from the marketplace |
-| `clarioncom-github-init` | Initialize GitHub repos for COM projects |
-| `evaluate-code` | Evaluate Clarion app code for issues and improvements |
 | `clarion-analyze` | Analyze Clarion code generation traces for recurring failure patterns |
 | `clarion-benchmark` | Benchmark Clarion code generation quality |
 | `clarion-convert-driver` | Convert Clarion dictionaries between file drivers (e.g., TopSpeed to SQLite) |
+| `evaluate-code` | Evaluate Clarion app code for issues and improvements |
 | `jfiles` | jFiles JSON serialization patterns for Clarion |
+| `ClarionCOM` | Interactive COM development assistant |
+| `clarioncom-build` | Build COM projects with MSBuild |
+| `clarioncom-config` | Manage ClarionCOM settings |
+| `clarioncom-control` | Create and validate C# COM controls for Clarion |
+| `clarioncom-create` | Create new C# COM control projects from scratch |
+| `clarioncom-deploy` | Generate deployment artifacts |
+| `clarioncom-get` | Download controls from the marketplace |
+| `clarioncom-github-init` | Initialize GitHub repos for COM projects |
+| `clarioncom-marketplace-submit` | Submit controls to the COM Marketplace |
+| `clarioncom-validate` | Validate RegFree COM compliance |
+| `clarioncom-webview2-build` | Build WebView2 COM control projects |
+| `clarioncom-webview2-create` | Create WebView2-based COM controls with HTML/CSS/JS |
+| `clarioncom-webview2-deploy` | Generate deployment artifacts for WebView2 COM controls |
+| `clarioncom-webview2-validate` | Validate WebView2 COM controls for RegFree compliance |
 
 ---
 

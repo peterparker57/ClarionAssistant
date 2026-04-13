@@ -1,9 +1,9 @@
-; Clarion Assistant v3.0 Installer
+; Clarion Assistant v4.0 Installer
 ; Inno Setup 6 Script
 ; Supports Clarion 10, 11, 12 — user picks which version(s) to install
 
 #define MyAppName "Clarion Assistant"
-#define MyAppVersion "3.1.0"
+#define MyAppVersion "4.0.0"
 #define MyAppPublisher "ClarionLive"
 #define MyAppURL "https://clarionlive.com"
 
@@ -27,9 +27,8 @@
 #define SrcComDocs "C:\Clarion12\accessory\resources\ComForClarionDocumentation"
 #define SrcClarionCOM "H:\DevLaptop\ClarionCOM\COMTemplate"
 #define SrcFts5 SrcBase + "\lib\sqlite-fts5"
-; LSP server removed from v3.0 distribution — available for manual install later
-; #define SrcLsp "H:\DevLaptop\ClarionLSP"
-; #define SrcNodeExe "C:\Program Files\nodejs\node.exe"
+#define SrcLsp "H:\DevLaptop\ClarionLSP"
+#define SrcNodeExe "C:\Program Files\nodejs\node.exe"
 #define SrcInstaller "H:\DevLaptop\ClarionAssistant\installer"
 
 [Setup]
@@ -86,6 +85,7 @@ Name: "plugin\skills"; Description: "Clarion Development Skills"; Types: full cu
 Name: "plugin\hooks"; Description: "Safety Hooks"; Types: full custom
 Name: "plugin\docs"; Description: "Plugin Documentation"; Types: full custom
 Name: "agents"; Description: "Claude Code Quality Agents"; Types: full custom
+Name: "lsp"; Description: "Clarion Language Server (LSP)"; Types: full custom
 Name: "docgraph"; Description: "Pre-loaded Documentation Database"; Types: full custom
 Name: "docs"; Description: "User Guide"; Types: full custom
 
@@ -114,9 +114,23 @@ Source: "{#SrcTerminal}\settings.html"; DestDir: "{code:GetC10Path}\accessory\ad
 Source: "{#SrcTerminal}\cheatsheet.html"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion10; Flags: ignoreversion
 Source: "{#SrcTerminal}\diff.html"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion10; Flags: ignoreversion
 Source: "{#SrcTerminal}\clarion-assistant-prompt.md"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion10; Flags: ignoreversion
+Source: "{#SrcTerminal}\create-class.html"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion10; Flags: ignoreversion
+Source: "{#SrcTerminal}\ca-statusline.js"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion10; Flags: ignoreversion
 Source: "{#SrcTaskBoard}\lifecycle-board.html"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\TaskLifecycleBoard"; Components: clarion10; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.exe"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant"; Components: clarion10; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.pdb"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant"; Components: clarion10; Flags: ignoreversion
+; --- Clarion 10 LSP Server ---
+Source: "{#SrcNodeExe}"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server"; Components: clarion10 and lsp; Flags: ignoreversion
+Source: "{#SrcLsp}\out\server\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\out\server"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\out\common\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\out\common"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-jsonrpc\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-jsonrpc"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-protocol\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-protocol"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-textdocument\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-textdocument"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-types\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-types"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xml2js\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xml2js"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\sax\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\sax"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xmlbuilder\*"; DestDir: "{code:GetC10Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xmlbuilder"; Components: clarion10 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Clarion 11 Addin ---
 Source: "{#SrcC11}\ClarionAssistant.dll"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant"; Components: clarion11; Flags: ignoreversion
@@ -138,9 +152,23 @@ Source: "{#SrcTerminal}\settings.html"; DestDir: "{code:GetC11Path}\accessory\ad
 Source: "{#SrcTerminal}\cheatsheet.html"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion11; Flags: ignoreversion
 Source: "{#SrcTerminal}\diff.html"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion11; Flags: ignoreversion
 Source: "{#SrcTerminal}\clarion-assistant-prompt.md"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion11; Flags: ignoreversion
+Source: "{#SrcTerminal}\create-class.html"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion11; Flags: ignoreversion
+Source: "{#SrcTerminal}\ca-statusline.js"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion11; Flags: ignoreversion
 Source: "{#SrcTaskBoard}\lifecycle-board.html"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\TaskLifecycleBoard"; Components: clarion11; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.exe"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant"; Components: clarion11; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.pdb"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant"; Components: clarion11; Flags: ignoreversion
+; --- Clarion 11 LSP Server ---
+Source: "{#SrcNodeExe}"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server"; Components: clarion11 and lsp; Flags: ignoreversion
+Source: "{#SrcLsp}\out\server\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\out\server"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\out\common\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\out\common"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-jsonrpc\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-jsonrpc"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-protocol\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-protocol"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-textdocument\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-textdocument"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-types\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-types"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xml2js\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xml2js"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\sax\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\sax"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xmlbuilder\*"; DestDir: "{code:GetC11Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xmlbuilder"; Components: clarion11 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- Clarion 12 Addin ---
 Source: "{#SrcC12}\ClarionAssistant.dll"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant"; Components: clarion12; Flags: ignoreversion
@@ -162,9 +190,23 @@ Source: "{#SrcTerminal}\settings.html"; DestDir: "{code:GetC12Path}\accessory\ad
 Source: "{#SrcTerminal}\cheatsheet.html"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion12; Flags: ignoreversion
 Source: "{#SrcTerminal}\diff.html"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion12; Flags: ignoreversion
 Source: "{#SrcTerminal}\clarion-assistant-prompt.md"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion12; Flags: ignoreversion
+Source: "{#SrcTerminal}\create-class.html"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion12; Flags: ignoreversion
+Source: "{#SrcTerminal}\ca-statusline.js"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\Terminal"; Components: clarion12; Flags: ignoreversion
 Source: "{#SrcTaskBoard}\lifecycle-board.html"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\TaskLifecycleBoard"; Components: clarion12; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.exe"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant"; Components: clarion12; Flags: ignoreversion
 Source: "{#SrcClarionIndexer}\clarion-indexer.pdb"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant"; Components: clarion12; Flags: ignoreversion
+; --- Clarion 12 LSP Server ---
+Source: "{#SrcNodeExe}"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server"; Components: clarion12 and lsp; Flags: ignoreversion
+Source: "{#SrcLsp}\out\server\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\out\server"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\out\common\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\out\common"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-jsonrpc\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-jsonrpc"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-protocol\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-protocol"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-textdocument\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-textdocument"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\vscode-languageserver-types\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\vscode-languageserver-types"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xml2js\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xml2js"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\sax\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\sax"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SrcLsp}\node_modules\xmlbuilder\*"; DestDir: "{code:GetC12Path}\accessory\addins\ClarionAssistant\lsp-server\node_modules\xmlbuilder"; Components: clarion12 and lsp; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; --- COM for Clarion: IDE Addin (installs to whichever Clarion version is selected — uses C12 path) ---
 Source: "{#SrcComForClarion}\ClarionCOMBrowser.dll"; DestDir: "{code:GetPrimaryClarionPath}\accessory\addins\ComForClarion"; Components: comforclarion\addin; Flags: ignoreversion

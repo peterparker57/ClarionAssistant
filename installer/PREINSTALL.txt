@@ -1,15 +1,20 @@
 Clarion Assistant Beta - Pre-Installation Notes
 
 PREREQUISITES:
-  - Clarion IDE (version 11 or 12) must be installed
+  - Clarion IDE (version 10, 11 or 12) must be installed
   - Claude Code CLI must be installed (https://claude.ai/download)
+    or from PowerShell: winget install Anthropic.ClaudeCode
   - Microsoft Edge WebView2 Runtime (usually pre-installed on Windows 11)
+  - Optional: Everything from voidtools, to enable Claude fast search
+    https://www.voidtools.com
 
 WHAT WILL BE INSTALLED:
   - Clarion Assistant addin (AI-powered coding assistant for the Clarion IDE)
+  - Clarion Language Server (LSP) for real-time code intelligence
   - COM for Clarion addin (COM control browser and creator)
-  - Claude Code skills for Clarion development (17 skills)
+  - Claude Code skills for Clarion development (21 skills)
   - Code quality agents (code reviewer, debugger, security auditor)
+  - Schema Graph database for dictionary and SQL Server indexing
   - Pre-loaded documentation database (Clarion 12 core docs)
   - User Guide
 
