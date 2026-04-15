@@ -278,6 +278,7 @@ namespace ClarionAssistant
                 case "cheatSheet": OnCheatSheet(); break;
                 case "docs": OnDocs(); break;
                 case "showLog": ShowIndexLog(); break;
+                case "openGitHub": OnOpenGitHub(); break;
             }
         }
 
