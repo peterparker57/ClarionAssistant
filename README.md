@@ -56,7 +56,7 @@ Ask it to write Clarion code, explain procedures, refactor classes, build COM co
 ### Build improvements
 - Explicit WebView2 assembly references in `.csproj` to fix compile-time resolution under MSBuild
 - `ValidateClarionReferences` MSBuild target for clearer error messages when `ClarionRoot` is not set
-- `deploy.ps1` now skips the indexer build gracefully when the project is not present, and supports `d:\Clarion11.1EE` as the primary Clarion 11 path
+- `deploy.ps1` now skips the indexer build gracefully when the project is not present
 
 ---
 
