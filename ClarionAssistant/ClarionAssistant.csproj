@@ -119,6 +119,7 @@
     <Compile Include="Dialogs\DiagnosticsForm.cs" />
     <Compile Include="Services\ClaudeProcessManager.cs" />
     <Compile Include="Services\CopilotProcessManager.cs" />
+    <Compile Include="Services\PwshCommandQuoter.cs" />
     <Compile Include="TaskLifecycleBoard\TaskLifecycleBoardForm.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <!-- CodeGraph engine (self-contained, no external dependencies) -->
