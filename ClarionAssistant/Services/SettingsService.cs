@@ -27,6 +27,18 @@ namespace ClarionAssistant.Services
         public void Set(string key, string value)
         {
             if (string.IsNullOrEmpty(key)) return;
+            // Reject CR/LF in values: the file format is line-based (key=value\n),
+            // so a value containing a newline would smuggle an additional key on
+            // reload (e.g. sneaking Copilot.PermissionMode=allow onto disk via a
+            // crafted ExtraFlags value).
+            if (value != null && (value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0))
+                throw new ArgumentException(
+                    "Setting values cannot contain newline characters.", "value");
+            // Reject CR/LF in keys too, for symmetry and to prevent a crafted
+            // key from escaping onto its own line.
+            if (key.IndexOf('\r') >= 0 || key.IndexOf('\n') >= 0 || key.IndexOf('=') >= 0)
+                throw new ArgumentException(
+                    "Setting keys cannot contain newline or '=' characters.", "key");
             _settings[key] = value ?? "";
             Save();
         }

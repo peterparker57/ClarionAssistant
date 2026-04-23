@@ -2432,14 +2432,32 @@ namespace ClarionAssistant
                 }
 
                 string colorfgbg = _isDarkTheme ? "$env:COLORFGBG='15;0'" : "$env:COLORFGBG='0;15'";
-                string claudeBase = _settings.GetDefaultClaudeCommand();
-                // If the command is bare "claude", resolve to full path so it works
-                // even when the CLI isn't on the inherited PATH
-                if (claudeBase == "claude")
+                // Build the base invocation from the user-selected Claude command.
+                // For bare "claude", resolve to the full path; for anything else,
+                // tokenize and quote so shell metacharacters in settings can't
+                // chain additional commands into the pwsh -Command payload.
+                string claudeCmdRaw = _settings.GetDefaultClaudeCommand();
+                string claudeBase;
+                if (claudeCmdRaw == "claude")
                 {
                     string resolved = Services.ClaudeProcessManager.FindClaudePathStatic();
-                    if (resolved != null)
-                        claudeBase = "& '" + resolved.Replace("'", "''") + "'";
+                    claudeBase = resolved != null
+                        ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
+                        : "claude";
+                }
+                else
+                {
+                    try
+                    {
+                        claudeBase = Services.PwshCommandQuoter.BuildInvocation(claudeCmdRaw);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        UpdateStatus("Claude launch aborted: " + ex.Message);
+                        tab.AssistantLaunched = false;
+                        tab.AssistantBackend = null;
+                        return;
+                    }
                 }
                 // Set CA tab ID so the statusline script can write per-tab status
                 string tabEnv = $"$env:CLARIONASSISTANT_TAB='{tab.Id}'";
@@ -2559,16 +2577,55 @@ namespace ClarionAssistant
                 string safeInstrDir = (instructionsDir ?? "").Replace("'", "''");
                 string safeMcpConfig = (mcpConfig ?? "").Replace("'", "''");
 
-                string copilotBase = _settings.GetDefaultCopilotCommand();
-                if (copilotBase == "copilot")
+                // Build the base invocation from the user-selected Copilot command.
+                // For bare "copilot", resolve to the full path; for anything else,
+                // tokenize and quote so shell metacharacters in settings can't
+                // chain additional commands into the pwsh -Command payload.
+                string copilotCmdRaw = _settings.GetDefaultCopilotCommand();
+                string copilotBase;
+                if (copilotCmdRaw == "copilot")
                 {
                     string resolved = Services.CopilotProcessManager.FindCopilotPathStatic();
-                    if (resolved != null)
-                        copilotBase = "& '" + resolved.Replace("'", "''") + "'";
+                    copilotBase = resolved != null
+                        ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
+                        : "copilot";
+                }
+                else
+                {
+                    try
+                    {
+                        copilotBase = Services.PwshCommandQuoter.BuildInvocation(copilotCmdRaw);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        UpdateStatus("Copilot launch aborted: " + ex.Message);
+                        tab.AssistantLaunched = false;
+                        tab.AssistantBackend = null;
+                        try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
+                        tab.Terminal = null;
+                        return;
+                    }
                 }
 
-                string extraFlags = _settings.Get("Copilot.ExtraFlags") ?? "";
-                if (!string.IsNullOrEmpty(extraFlags)) extraFlags = " " + extraFlags.Trim();
+                // Copilot.ExtraFlags is user-controllable; tokenize + quote each
+                // token so a settings value like "--verbose; Remove-Item ..." can't
+                // break out of the pwsh payload.
+                string extraFlagsRaw = _settings.Get("Copilot.ExtraFlags") ?? "";
+                string extraFlags;
+                try
+                {
+                    string built = Services.PwshCommandQuoter.BuildFlags(extraFlagsRaw);
+                    extraFlags = string.IsNullOrEmpty(built) ? string.Empty : " " + built;
+                }
+                catch (ArgumentException ex)
+                {
+                    UpdateStatus("Copilot launch aborted: " + ex.Message);
+                    tab.AssistantLaunched = false;
+                    tab.AssistantBackend = null;
+                    try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
+                    tab.Terminal = null;
+                    return;
+                }
 
                 string copilotModelVal = (_settings.Get("Copilot.Model") ?? "").Trim();
                 string modelFlag = string.IsNullOrEmpty(copilotModelVal)
