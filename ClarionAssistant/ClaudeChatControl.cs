@@ -2560,7 +2560,7 @@ namespace ClarionAssistant
                     ? tab.WorkingDirectory
                     : GetWorkingDirectory();
 
-                string copilotHome = GetCopilotHomeDir(tab);
+                string copilotHome = GetCopilotHomeDir();
                 string mcpConfig = null;
                 try
                 {
@@ -2636,6 +2636,10 @@ namespace ClarionAssistant
                 string permissionFlags = string.Equals(permissionMode, "allow", StringComparison.OrdinalIgnoreCase)
                     ? " --allow-all-tools"
                     : string.Empty;
+                // The '@' prefix on the path tells Copilot CLI to load the MCP
+                // config from a file rather than parse the argument as inline
+                // JSON. Copilot's own docs are quiet on this sigil; keep this
+                // comment if a future CLI upgrade changes the convention.
                 string mcpConfigArg = string.IsNullOrEmpty(safeMcpConfig)
                     ? string.Empty
                     : $" --additional-mcp-config '@{safeMcpConfig}'";
@@ -2643,6 +2647,11 @@ namespace ClarionAssistant
                 // Copilot CLI picks up custom instructions via COPILOT_CUSTOM_INSTRUCTIONS_DIRS.
                 // For MCP, pass the generated config explicitly because `--config-dir`/COPILOT_HOME
                 // did not reliably surface the clarion-assistant server in practice.
+                //
+                // Note on the `--add-dir` below: Copilot's CWD already covers workDir
+                // via the preceding `cd`, but `--add-dir` additionally puts the path
+                // on Copilot's allowed-paths list for cross-directory tool operations.
+                // The two are intentionally both set, not redundant.
                 string cmd =
                     $"cd '{safeWorkDir}'; " +
                     "$env:CLARION_ASSISTANT_EMBEDDED='1'; " +
@@ -2989,13 +2998,30 @@ namespace ClarionAssistant
             return requirePwsh ? null : "powershell.exe";
         }
 
-        private static string GetCopilotHomeDir(TerminalTab tab)
+        private static string GetCopilotHomeDir()
         {
-            string dir = Path.Combine(
+            // Shared across all tabs — the mcp-config.json and instructions/AGENTS.md
+            // we write here are launch-identical per-tab, so an earlier per-tab layout
+            // just accumulated orphan directories. Keep it flat.
+            string root = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "ClarionAssistant", "copilot", "tab-" + tab.Id);
-            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
-            return dir;
+                "ClarionAssistant", "copilot");
+            if (!Directory.Exists(root)) Directory.CreateDirectory(root);
+
+            // One-shot cleanup of the legacy per-tab layout. Best-effort; ignore
+            // failures (another process might be using a dir, or ACLs might
+            // block removal — not worth blocking the launch over).
+            try
+            {
+                foreach (string legacy in Directory.GetDirectories(root, "tab-*"))
+                {
+                    try { Directory.Delete(legacy, recursive: true); }
+                    catch { }
+                }
+            }
+            catch { }
+
+            return root;
         }
 
         private static string DeployCopilotInstructions(string copilotHome)
