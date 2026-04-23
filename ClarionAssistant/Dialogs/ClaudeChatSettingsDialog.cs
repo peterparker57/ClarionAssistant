@@ -243,6 +243,22 @@ namespace ClarionAssistant.Dialogs
             }
             cmdsSb.Append("]");
 
+            // Copilot commands
+            var copilotCommands = _settings.GetCopilotCommands();
+            var copSb = new StringBuilder("[");
+            for (int ci = 0; ci < copilotCommands.Count; ci++)
+            {
+                if (ci > 0) copSb.Append(",");
+                copSb.AppendFormat("{{\"command\":\"{0}\",\"isDefault\":{1}}}",
+                    EscapeJson(copilotCommands[ci].Key), copilotCommands[ci].Value ? "true" : "false");
+            }
+            copSb.Append("]");
+
+            string backend = _settings.Get("Assistant.Backend") ?? "Claude";
+            string copilotModel = _settings.Get("Copilot.Model") ?? "";
+            string copilotPermMode = _settings.Get("Copilot.PermissionMode") ?? "prompt";
+            string copilotExtraFlags = _settings.Get("Copilot.ExtraFlags") ?? "";
+
             var ver = Assembly.GetExecutingAssembly().GetName().Version;
             string displayVersion = ver.Major + "." + ver.Minor;
 
@@ -254,6 +270,7 @@ namespace ClarionAssistant.Dialogs
                 + ",\"model\":\"" + EscapeJson(model) + "\""
                 + ",\"workingDir\":\"" + EscapeJson(workingDir) + "\""
                 + ",\"comFolder\":\"" + EscapeJson(comFolder) + "\""
+                + ",\"assistantBackend\":\"" + EscapeJson(backend) + "\""
                 + ",\"autoUpdate\":" + (autoUpdate ? "true" : "false")
                 + ",\"mtAvailable\":" + (mtAvailable ? "true" : "false")
                 + ",\"mtEnabled\":" + (mtOn ? "true" : "false")
@@ -261,6 +278,11 @@ namespace ClarionAssistant.Dialogs
                 + ",\"libStatus\":\"" + EscapeJson(libStatus) + "\""
                 + ",\"docPaths\":" + docPathsSb
                 + ",\"commands\":" + cmdsSb
+                + ",\"claudeCommands\":" + cmdsSb
+                + ",\"copilotCommands\":" + copSb
+                + ",\"copilotModel\":\"" + EscapeJson(copilotModel) + "\""
+                + ",\"copilotPermissionMode\":\"" + EscapeJson(copilotPermMode) + "\""
+                + ",\"copilotExtraFlags\":\"" + EscapeJson(copilotExtraFlags) + "\""
                 + ",\"classOutputFolder\":\"" + EscapeJson(_settings.Get("Class.OutputFolder") ?? "") + "\""
                 + ",\"classModels\":" + BuildClassModelsJson()
                 + "}}";
@@ -492,6 +514,11 @@ namespace ClarionAssistant.Dialogs
             bool mtEnabled = ExtractJsonValue(data, "mtEnabled") == "true";
             string agentName = ExtractJsonValue(data, "agentName") ?? "ClarionIDE";
 
+            string backend = ExtractJsonValue(data, "assistantBackend") ?? (_settings.Get("Assistant.Backend") ?? "Claude");
+            string copilotModel = ExtractJsonValue(data, "copilotModel") ?? (_settings.Get("Copilot.Model") ?? "");
+            string copilotPermMode = ExtractJsonValue(data, "copilotPermissionMode") ?? (_settings.Get("Copilot.PermissionMode") ?? "prompt");
+            string copilotExtraFlags = ExtractJsonValue(data, "copilotExtraFlags") ?? (_settings.Get("Copilot.ExtraFlags") ?? "");
+
             // Save
             _settings.Set("Theme", theme);
             _settings.Set("Claude.FontFamily", fontFamily);
@@ -503,34 +530,25 @@ namespace ClarionAssistant.Dialogs
             _settings.Set("MultiTerminal.Enabled", mtEnabled.ToString().ToLower());
             _settings.Set("MultiTerminal.AgentName", agentName);
 
+            _settings.Set("Assistant.Backend", backend);
+            _settings.Set("Copilot.Model", copilotModel);
+            _settings.Set("Copilot.PermissionMode", copilotPermMode);
+            _settings.Set("Copilot.ExtraFlags", copilotExtraFlags);
+
             // Class output folder
             string classOutputFolder = ExtractJsonValue(data, "classOutputFolder") ?? "";
             if (!string.IsNullOrEmpty(classOutputFolder))
                 _settings.Set("Class.OutputFolder", classOutputFolder);
 
             // Claude commands
-            string commandsJson = ExtractJsonArray(data, "commands");
-            if (commandsJson != null)
-            {
-                var cmds = new List<KeyValuePair<string, bool>>();
-                // Parse array of {command:"...", isDefault:true/false}
-                int cpos = 0;
-                while (cpos < commandsJson.Length)
-                {
-                    int objStart = commandsJson.IndexOf('{', cpos);
-                    if (objStart < 0) break;
-                    int objEnd = commandsJson.IndexOf('}', objStart);
-                    if (objEnd < 0) break;
-                    string obj = commandsJson.Substring(objStart, objEnd - objStart + 1);
-                    string cmd = ExtractJsonValue(obj, "command");
-                    bool isDef = ExtractJsonValue(obj, "isDefault") == "true";
-                    if (!string.IsNullOrEmpty(cmd))
-                        cmds.Add(new KeyValuePair<string, bool>(cmd, isDef));
-                    cpos = objEnd + 1;
-                }
-                if (cmds.Count > 0)
-                    _settings.SetClaudeCommands(cmds);
-            }
+            // Commands (both backends)
+            var claudeCmds = ParseCommandsArray(ExtractJsonArray(data, "claudeCommands") ?? ExtractJsonArray(data, "commands"));
+            if (claudeCmds != null && claudeCmds.Count > 0)
+                _settings.SetClaudeCommands(claudeCmds);
+
+            var copilotCmds = ParseCommandsArray(ExtractJsonArray(data, "copilotCommands"));
+            if (copilotCmds != null && copilotCmds.Count > 0)
+                _settings.SetCopilotCommands(copilotCmds);
 
             // Doc paths — extract JSON array, detect new paths, trigger ingestion
             string oldPathsStr = _settings.Get("DocGraph.Paths") ?? "";
@@ -571,6 +589,27 @@ namespace ClarionAssistant.Dialogs
 
             SettingsSaved?.Invoke(this);
             Close();
+        }
+
+        private static List<KeyValuePair<string, bool>> ParseCommandsArray(string commandsJson)
+        {
+            if (string.IsNullOrEmpty(commandsJson)) return null;
+            var cmds = new List<KeyValuePair<string, bool>>();
+            int cpos = 0;
+            while (cpos < commandsJson.Length)
+            {
+                int objStart = commandsJson.IndexOf('{', cpos);
+                if (objStart < 0) break;
+                int objEnd = commandsJson.IndexOf('}', objStart);
+                if (objEnd < 0) break;
+                string obj = commandsJson.Substring(objStart, objEnd - objStart + 1);
+                string cmd = ExtractJsonValue(obj, "command");
+                bool isDef = ExtractJsonValue(obj, "isDefault") == "true";
+                if (!string.IsNullOrEmpty(cmd))
+                    cmds.Add(new KeyValuePair<string, bool>(cmd, isDef));
+                cpos = objEnd + 1;
+            }
+            return cmds;
         }
 
         private void BrowseFolder(string target, string description, string initialPath)

@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Point this to your local Clarion installation root, the folder that contains bin\ICSharpCode.Core.dll -->
+    <ClarionRoot>C:\Clarion12</ClarionRoot>
+
+    <!-- Optional: override when targeting a different Clarion version -->
+    <ClarionVersion>12</ClarionVersion>
+  </PropertyGroup>
+</Project>

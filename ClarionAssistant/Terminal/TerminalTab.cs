@@ -40,8 +40,14 @@ namespace ClarionAssistant.Terminal
         /// <summary>Knowledge service session ID.</summary>
         public int SessionId { get; set; }
 
-        /// <summary>Whether Claude Code has been launched in this tab.</summary>
-        public bool ClaudeLaunched { get; set; }
+        /// <summary>Whether an AI assistant has been launched in this tab.</summary>
+        public bool AssistantLaunched { get; set; }
+
+        /// <summary>
+        /// Backend used for this tab's terminal session (e.g., "Claude" or "Copilot").
+        /// Stored per-tab so existing tabs keep correct exit/status behavior even if settings change.
+        /// </summary>
+        public string AssistantBackend { get; set; }
 
         /// <summary>Skill command to auto-run after Claude starts (e.g. "/ClarionCOM").</summary>
         public string StartupCommand { get; set; }

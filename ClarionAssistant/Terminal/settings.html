@@ -371,14 +371,39 @@
     <div class="page" id="page-general">
       <h2>General</h2>
 
-      <div class="field">
+      <div class="field" id="claudeModelField">
         <div class="field-label">Claude Model</div>
         <select id="model">
           <option value="sonnet">Sonnet</option>
           <option value="opus">Opus</option>
           <option value="haiku">Haiku</option>
         </select>
-        <div class="field-desc">Model used for new chat sessions.</div>
+        <div class="field-desc">Model used for new Claude sessions.</div>
+      </div>
+
+      <div class="field" id="copilotModelField" style="display:none">
+        <div class="field-label">Copilot Model</div>
+        <select id="copilotModel">
+          <option value="">(default)</option>
+          <optgroup label="GPT">
+            <option value="gpt-5.4">GPT-5.4</option>
+            <option value="gpt-5.4-mini">GPT-5.4 mini</option>
+            <option value="gpt-5.3-codex">GPT-5.3 Codex</option>
+            <option value="gpt-5.2-codex">GPT-5.2 Codex</option>
+            <option value="gpt-5.2">GPT-5.2</option>
+            <option value="gpt-5-mini">GPT-5 mini</option>
+            <option value="gpt-4.1">GPT-4.1</option>
+          </optgroup>
+          <optgroup label="Claude">
+            <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
+            <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
+            <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
+            <option value="claude-opus-4.6">Claude Opus 4.6</option>
+            <option value="claude-opus-4.5">Claude Opus 4.5</option>
+            <option value="claude-sonnet-4">Claude Sonnet 4</option>
+          </optgroup>
+        </select>
+        <div class="field-desc">Model passed via <code>--model</code> to Copilot CLI.</div>
       </div>
 
       <div class="field">
@@ -441,8 +466,17 @@
     <div class="page" id="page-launch">
       <h2>Launch</h2>
 
-      <h3>Claude Commands</h3>
-      <div class="field-desc" style="margin-bottom:8px">Configure launch commands for Claude Code terminal sessions.</div>
+      <div class="field">
+        <div class="field-label">Assistant Backend</div>
+        <select id="assistantBackend" onchange="onBackendChanged()" style="width:240px">
+          <option value="Claude">Claude</option>
+          <option value="Copilot">Copilot</option>
+        </select>
+        <div class="field-desc">Select which CLI is launched for new terminal sessions.</div>
+      </div>
+
+      <h3 id="cmdTitle">Commands</h3>
+      <div class="field-desc" id="cmdDesc" style="margin-bottom:8px">Configure launch commands for terminal sessions.</div>
       <div class="cmd-table-wrap">
         <table class="cmd-table" id="cmdTable">
           <thead><tr><th>Command</th><th style="text-align:center;width:60px">Default</th></tr></thead>
@@ -456,22 +490,41 @@
         <button class="btn btn-sm" onclick="cmdSetDefault()">Set Default</button>
       </div>
 
-      <h3>Auto-Update</h3>
-      <div class="check-row">
-        <input type="checkbox" id="autoUpdate">
-        <label for="autoUpdate">Run <code>claude update</code> before launching</label>
-      </div>
-      <div class="field-desc" style="margin-top:4px">When enabled, checks for Claude Code updates each time a new terminal session starts.</div>
+      <div id="claudeOnly">
+        <h3>Auto-Update</h3>
+        <div class="check-row">
+          <input type="checkbox" id="autoUpdate">
+          <label for="autoUpdate">Run <code>claude update</code> before launching</label>
+        </div>
+        <div class="field-desc" style="margin-top:4px">When enabled, checks for Claude Code updates each time a new terminal session starts.</div>
 
-      <h3>MultiTerminal</h3>
-      <div class="check-row">
-        <input type="checkbox" id="mtEnabled">
-        <label for="mtEnabled">Enable MultiTerminal connection</label>
-        <span id="mtStatus" class="status status-success" style="margin-left:8px">Detected</span>
+        <h3>MultiTerminal</h3>
+        <div class="check-row">
+          <input type="checkbox" id="mtEnabled">
+          <label for="mtEnabled">Enable MultiTerminal connection</label>
+          <span id="mtStatus" class="status status-success" style="margin-left:8px">Detected</span>
+        </div>
+        <div class="field">
+          <div class="field-label">Agent Name</div>
+          <input type="text" id="agentName" value="ClarionIDE" style="width:200px">
+        </div>
       </div>
-      <div class="field">
-        <div class="field-label">Agent Name</div>
-        <input type="text" id="agentName" value="ClarionIDE" style="width:200px">
+
+      <div id="copilotOnly" style="display:none">
+        <h3>Copilot</h3>
+        <div class="field">
+          <div class="field-label">Permission Mode</div>
+          <select id="copilotPermissionMode" style="width:240px">
+            <option value="prompt">Prompt</option>
+            <option value="allow">Allow Tools</option>
+          </select>
+          <div class="field-desc">`Prompt` asks before tool use. `Allow Tools` passes `--allow-all-tools` for automatic tool approval.</div>
+        </div>
+        <div class="field">
+          <div class="field-label">Extra Flags</div>
+          <input type="text" id="copilotExtraFlags" placeholder="e.g. --verbose">
+          <div class="field-desc">Optional additional flags appended to the Copilot command.</div>
+        </div>
       </div>
     </div>
 
@@ -908,10 +961,42 @@
       send('deleteClassModel', name);
   }
 
-  // ── Claude Commands ──────────────────────────────
-  var _commands = [];   // [{command:'...', isDefault:true/false}, ...]
+  // ── Commands (per backend) ───────────────────────
+  var _assistantBackend = 'Claude';
+  var _claudeCommands = [];   // [{command:'...', isDefault:true/false}, ...]
+  var _copilotCommands = [];  // [{command:'...', isDefault:true/false}, ...]
+  var _commands = [];         // active pointer
   var _cmdSelectedIdx = -1;
   var _cmdEditIdx = -1; // -1 = adding new, >=0 = editing existing
+
+  function onBackendChanged() {
+    setBackend(document.getElementById('assistantBackend').value);
+  }
+
+  function setBackend(backend) {
+    _assistantBackend = backend || 'Claude';
+    var sel = document.getElementById('assistantBackend');
+    if (sel) sel.value = _assistantBackend;
+
+    var claudeOnly = document.getElementById('claudeOnly');
+    var copilotOnly = document.getElementById('copilotOnly');
+    if (claudeOnly) claudeOnly.style.display = (_assistantBackend === 'Claude') ? 'block' : 'none';
+    if (copilotOnly) copilotOnly.style.display = (_assistantBackend === 'Copilot') ? 'block' : 'none';
+
+    var claudeModelField = document.getElementById('claudeModelField');
+    var copilotModelField = document.getElementById('copilotModelField');
+    if (claudeModelField) claudeModelField.style.display = (_assistantBackend === 'Claude') ? 'block' : 'none';
+    if (copilotModelField) copilotModelField.style.display = (_assistantBackend === 'Copilot') ? 'block' : 'none';
+
+    var title = document.getElementById('cmdTitle');
+    var desc = document.getElementById('cmdDesc');
+    if (title) title.textContent = _assistantBackend + ' Commands';
+    if (desc) desc.textContent = 'Configure launch commands for ' + _assistantBackend + ' terminal sessions.';
+
+    _commands = (_assistantBackend === 'Copilot') ? _copilotCommands : _claudeCommands;
+    _cmdSelectedIdx = _commands.length > 0 ? 0 : -1;
+    renderCommands();
+  }
 
   function renderCommands() {
     var tbody = document.getElementById('cmdBody');
@@ -1116,11 +1201,17 @@
       model: document.getElementById('model').value,
       workingDir: document.getElementById('workingDir').value,
       comFolder: document.getElementById('comFolder').value,
+      assistantBackend: _assistantBackend,
       autoUpdate: document.getElementById('autoUpdate').checked,
       mtEnabled: document.getElementById('mtEnabled').checked,
       agentName: document.getElementById('agentName').value,
       docPaths: currentSettings.docPaths || [],
-      commands: _commands,
+      commands: _claudeCommands,
+      claudeCommands: _claudeCommands,
+      copilotCommands: _copilotCommands,
+      copilotModel: (document.getElementById('copilotModel') || {}).value || '',
+      copilotPermissionMode: (document.getElementById('copilotPermissionMode') || {}).value || 'prompt',
+      copilotExtraFlags: (document.getElementById('copilotExtraFlags') || {}).value || '',
       classOutputFolder: document.getElementById('classOutputFolder').value
     };
     send('save', data);
@@ -1181,10 +1272,16 @@
       // Doc paths
       renderDocPaths(s.docPaths || []);
 
-      // Claude Commands
-      _commands = s.commands || [];
-      _cmdSelectedIdx = _commands.length > 0 ? 0 : -1;
-      renderCommands();
+      // Backend + commands
+      _claudeCommands = s.claudeCommands || s.commands || [];
+      _copilotCommands = s.copilotCommands || [];
+      if (document.getElementById('copilotModel'))
+        document.getElementById('copilotModel').value = s.copilotModel || '';
+      if (document.getElementById('copilotPermissionMode'))
+        document.getElementById('copilotPermissionMode').value = s.copilotPermissionMode || 'prompt';
+      if (document.getElementById('copilotExtraFlags'))
+        document.getElementById('copilotExtraFlags').value = s.copilotExtraFlags || '';
+      setBackend(s.assistantBackend || 'Claude');
 
       // Class Models
       _classModels = s.classModels || [];

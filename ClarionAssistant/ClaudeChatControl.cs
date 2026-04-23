@@ -936,7 +936,8 @@ namespace ClarionAssistant
             try
             {
                 var tab = _tabManager?.ActiveTab;
-                if (tab == null || tab.IsHome || !tab.ClaudeLaunched || tab.Renderer == null) return;
+                if (tab == null || tab.IsHome || !tab.AssistantLaunched || tab.Renderer == null) return;
+                if (!string.Equals(tab.AssistantBackend, "Claude", StringComparison.OrdinalIgnoreCase)) return;
 
                 string filePath = Path.Combine(Path.GetTempPath(), "ca-statusline-" + tab.Id + ".json");
                 if (!File.Exists(filePath)) return;
@@ -2332,7 +2333,7 @@ namespace ClarionAssistant
             tab.Renderer.SetFontSize(GetFontSize());
             tab.Renderer.SetFontFamily(GetFontFamily());
             tab.Renderer.FontSizeChangedByUser += OnFontSizeChangedByWheel;
-            LaunchClaudeForTab(tab);
+            LaunchAssistantForTab(tab);
             tab.Renderer.Focus();
         }
 
@@ -2341,11 +2342,21 @@ namespace ClarionAssistant
             _settings.Set("Claude.FontSize", size.ToString());
         }
 
+        private void LaunchAssistantForTab(TerminalTab tab)
+        {
+            string backend = _settings.Get("Assistant.Backend") ?? "Claude";
+            if (string.Equals(backend, "Copilot", StringComparison.OrdinalIgnoreCase))
+                LaunchCopilotForTab(tab);
+            else
+                LaunchClaudeForTab(tab);
+        }
+
         private void LaunchClaudeForTab(TerminalTab tab)
         {
-            System.Diagnostics.Debug.WriteLine("[LaunchClaude] ENTER tab=" + tab.Id + ", ClaudeLaunched=" + tab.ClaudeLaunched);
-            if (tab.ClaudeLaunched) return;
-            tab.ClaudeLaunched = true;
+            System.Diagnostics.Debug.WriteLine("[LaunchClaude] ENTER tab=" + tab.Id + ", AssistantLaunched=" + tab.AssistantLaunched);
+            if (tab.AssistantLaunched) return;
+            tab.AssistantLaunched = true;
+            tab.AssistantBackend = "Claude";
 
             try
             {
@@ -2497,6 +2508,110 @@ namespace ClarionAssistant
             }
         }
 
+        private void LaunchCopilotForTab(TerminalTab tab)
+        {
+            System.Diagnostics.Debug.WriteLine("[LaunchCopilot] ENTER tab=" + tab.Id + ", AssistantLaunched=" + tab.AssistantLaunched);
+            if (tab.AssistantLaunched) return;
+            tab.AssistantLaunched = true;
+            tab.AssistantBackend = "Copilot";
+
+            try
+            {
+                tab.Terminal = new ConPtyTerminal();
+                tab.Terminal.DataReceived += data => OnTabTerminalDataReceived(tab, data);
+                tab.Terminal.ProcessExited += (s, ev) => OnTabTerminalProcessExited(tab);
+
+                string pwsh = FindPowerShell(requirePwsh: true);
+                if (string.IsNullOrEmpty(pwsh) || !File.Exists(pwsh))
+                {
+                    UpdateStatus("Copilot requires pwsh.exe");
+                    try
+                    {
+                        MessageBox.Show("GitHub Copilot CLI integration requires PowerShell 7 (pwsh.exe).\n\nInstall PowerShell 7 and try again.",
+                            "Copilot CLI", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch { }
+                    tab.AssistantLaunched = false;
+                    tab.AssistantBackend = null;
+                    try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
+                    tab.Terminal = null;
+                    return;
+                }
+
+                string workDir = !string.IsNullOrEmpty(tab.WorkingDirectory) && Directory.Exists(tab.WorkingDirectory)
+                    ? tab.WorkingDirectory
+                    : GetWorkingDirectory();
+
+                string copilotHome = GetCopilotHomeDir(tab);
+                string mcpConfig = null;
+                try
+                {
+                    if (_mcpServer != null)
+                        mcpConfig = _mcpServer.WriteMcpConfigFile(copilotHome, Services.McpServer.McpConfigFormat.Copilot);
+                }
+                catch { }
+
+                string instructionsDir = DeployCopilotInstructions(copilotHome);
+
+                string envSetup = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8; ";
+                string safeWorkDir = workDir.Replace("'", "''");
+                string safeCopilotHome = copilotHome.Replace("'", "''");
+                string safeInstrDir = (instructionsDir ?? "").Replace("'", "''");
+                string safeMcpConfig = (mcpConfig ?? "").Replace("'", "''");
+
+                string copilotBase = _settings.GetDefaultCopilotCommand();
+                if (copilotBase == "copilot")
+                {
+                    string resolved = Services.CopilotProcessManager.FindCopilotPathStatic();
+                    if (resolved != null)
+                        copilotBase = "& '" + resolved.Replace("'", "''") + "'";
+                }
+
+                string extraFlags = _settings.Get("Copilot.ExtraFlags") ?? "";
+                if (!string.IsNullOrEmpty(extraFlags)) extraFlags = " " + extraFlags.Trim();
+
+                string copilotModelVal = (_settings.Get("Copilot.Model") ?? "").Trim();
+                string modelFlag = string.IsNullOrEmpty(copilotModelVal)
+                    ? string.Empty
+                    : $" --model '{copilotModelVal.Replace("'", "''")}'";
+
+                string permissionMode = (_settings.Get("Copilot.PermissionMode") ?? "prompt").Trim();
+                string permissionFlags = string.Equals(permissionMode, "allow", StringComparison.OrdinalIgnoreCase)
+                    ? " --allow-all-tools"
+                    : string.Empty;
+                string mcpConfigArg = string.IsNullOrEmpty(safeMcpConfig)
+                    ? string.Empty
+                    : $" --additional-mcp-config '@{safeMcpConfig}'";
+
+                // Copilot CLI picks up custom instructions via COPILOT_CUSTOM_INSTRUCTIONS_DIRS.
+                // For MCP, pass the generated config explicitly because `--config-dir`/COPILOT_HOME
+                // did not reliably surface the clarion-assistant server in practice.
+                string cmd =
+                    $"cd '{safeWorkDir}'; " +
+                    "$env:CLARION_ASSISTANT_EMBEDDED='1'; " +
+                    $"$env:COPILOT_HOME='{safeCopilotHome}'; " +
+                    (string.IsNullOrEmpty(safeInstrDir) ? "" : $"$env:COPILOT_CUSTOM_INSTRUCTIONS_DIRS='{safeInstrDir}'; ") +
+                    copilotBase +
+                    $" --config-dir '{safeCopilotHome}'" +
+                    mcpConfigArg +
+                    $" --add-dir '{safeWorkDir}'" +
+                    modelFlag +
+                    permissionFlags +
+                    extraFlags;
+
+                string commandLine = $"\"{pwsh}\" -NoLogo -ExecutionPolicy Bypass -NoExit -Command \"{envSetup}{cmd}\"";
+
+                System.Diagnostics.Debug.WriteLine("[LaunchCopilot] mcpConfig=" + (mcpConfig ?? "(none)") + ", home=" + copilotHome);
+                System.Diagnostics.Debug.WriteLine("[LaunchCopilot] cols=" + tab.Renderer.VisibleCols + ", rows=" + tab.Renderer.VisibleRows);
+                tab.Terminal.Start(tab.Renderer.VisibleCols, tab.Renderer.VisibleRows, commandLine, workDir);
+                UpdateStatus("MCP: port " + (_mcpServer?.Port ?? 0) + " | Copilot CLI running");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[LaunchCopilot] EXCEPTION: " + ex);
+            }
+        }
+
         private void OnTabRendererDataReceived(TerminalTab tab, byte[] data)
         {
             if (tab.Terminal != null && tab.Terminal.IsRunning)
@@ -2521,7 +2636,7 @@ namespace ClarionAssistant
                 try
                 {
                     // Skip early output — Claude Code takes several seconds to initialize
-                    if (!tab.ClaudeLaunched) { /* terminal not ready yet */ }
+                    if (!tab.AssistantLaunched) { /* terminal not ready yet */ }
                     else
                     {
                         string text = Encoding.UTF8.GetString(data);
@@ -2558,7 +2673,7 @@ namespace ClarionAssistant
 
         private void OnTabTerminalProcessExited(TerminalTab tab)
         {
-            tab.ClaudeLaunched = false;
+            tab.AssistantLaunched = false;
 
             if (_knowledgeService != null && tab.SessionId > 0)
             {
@@ -2566,10 +2681,13 @@ namespace ClarionAssistant
                 catch { }
             }
 
+            string label = string.Equals(tab.AssistantBackend, "Copilot", StringComparison.OrdinalIgnoreCase)
+                ? "Copilot CLI exited"
+                : "Claude Code exited";
             if (InvokeRequired)
-                BeginInvoke((Action)(() => UpdateStatus("Claude Code exited")));
+                BeginInvoke((Action)(() => UpdateStatus(label)));
             else
-                UpdateStatus("Claude Code exited");
+                UpdateStatus(label);
         }
 
         private void OnWorkWithSolution()
@@ -2766,13 +2884,81 @@ namespace ClarionAssistant
             return greeting;
         }
 
-        private string FindPowerShell()
+        private string FindPowerShell(bool requirePwsh = false)
         {
-            string pwsh7 = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                "PowerShell", "7", "pwsh.exe");
-            if (File.Exists(pwsh7)) return pwsh7;
-            return "powershell.exe";
+            // Clarion loads this addin as an x86 process, so SpecialFolder.ProgramFiles can
+            // resolve to "C:\Program Files (x86)" even when pwsh is installed in the 64-bit path.
+            // Check both standard locations and then fall back to PATH resolution.
+            var candidates = new System.Collections.Generic.List<string>();
+
+            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+            if (!string.IsNullOrEmpty(programFiles))
+                candidates.Add(Path.Combine(programFiles, "PowerShell", "7", "pwsh.exe"));
+
+            string programW6432 = Environment.GetEnvironmentVariable("ProgramW6432");
+            if (!string.IsNullOrEmpty(programW6432))
+                candidates.Add(Path.Combine(programW6432, "PowerShell", "7", "pwsh.exe"));
+
+            string programFilesEnv = Environment.GetEnvironmentVariable("ProgramFiles");
+            if (!string.IsNullOrEmpty(programFilesEnv))
+                candidates.Add(Path.Combine(programFilesEnv, "PowerShell", "7", "pwsh.exe"));
+
+            foreach (string candidate in candidates)
+            {
+                if (!string.IsNullOrEmpty(candidate) && File.Exists(candidate))
+                    return candidate;
+            }
+
+            try
+            {
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "where",
+                    Arguments = "pwsh",
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    CreateNoWindow = true
+                };
+                using (var proc = Process.Start(psi))
+                {
+                    string output = proc.StandardOutput.ReadLine();
+                    proc.WaitForExit(3000);
+                    if (!string.IsNullOrEmpty(output) && File.Exists(output))
+                        return output;
+                }
+            }
+            catch { }
+
+            return requirePwsh ? null : "powershell.exe";
+        }
+
+        private static string GetCopilotHomeDir(TerminalTab tab)
+        {
+            string dir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "ClarionAssistant", "copilot", "tab-" + tab.Id);
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return dir;
+        }
+
+        private static string DeployCopilotInstructions(string copilotHome)
+        {
+            try
+            {
+                string assemblyDir = Path.GetDirectoryName(
+                    System.Reflection.Assembly.GetExecutingAssembly().Location);
+                string source = Path.Combine(assemblyDir, "Terminal", "AGENTS.md");
+                if (!File.Exists(source)) return null;
+
+                string instrDir = Path.Combine(copilotHome, "instructions");
+                if (!Directory.Exists(instrDir)) Directory.CreateDirectory(instrDir);
+
+                string dest = Path.Combine(instrDir, "AGENTS.md");
+                File.Copy(source, dest, true);
+                return instrDir;
+            }
+            catch { }
+            return null;
         }
 
         private static string GetClarionAssistantPluginPath()

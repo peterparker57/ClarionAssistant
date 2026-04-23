@@ -106,6 +106,12 @@ namespace ClarionAssistant.Services
         public bool IncludeMultiTerminal { get; set; }
         public string MultiTerminalMcpPath { get; set; }
 
+        public enum McpConfigFormat
+        {
+            Claude,
+            Copilot
+        }
+
         /// <summary>
         /// True if the multiterminal-channel plugin .mjs file is present on disk.
         /// Set by GenerateMcpConfig when it successfully resolves the path.
@@ -114,38 +120,48 @@ namespace ClarionAssistant.Services
         /// </summary>
         public bool IncludeMultiTerminalChannel { get; private set; }
 
-        public string GenerateMcpConfig()
+        public string GenerateMcpConfig(McpConfigFormat format = McpConfigFormat.Claude)
         {
-            // Build auto-approve list from all registered tools
-            var toolNames = new List<string>();
-            foreach (var tool in _toolRegistry.GetToolDefinitions())
+            var servers = new Dictionary<string, object>();
+            if (format == McpConfigFormat.Copilot)
             {
-                var name = tool.ContainsKey("name") ? tool["name"] as string : null;
-                if (!string.IsNullOrEmpty(name))
-                    toolNames.Add("mcp__clarion-assistant__" + name);
+                // Copilot MCP schema requires per-server tools allowlist.
+                // Use ["*"] to avoid name/namespace mismatches with the mcp__clarion-assistant__ prefix.
+                servers["clarion-assistant"] = new Dictionary<string, object>
+                {
+                    { "type", "http" },
+                    { "url", string.Format("http://localhost:{0}/mcp", _port) },
+                    { "tools", new string[] { "*" } }
+                };
+            }
+            else
+            {
+                var toolNames = new List<string>();
+                foreach (var tool in _toolRegistry.GetToolDefinitions())
+                {
+                    var name = tool.ContainsKey("name") ? tool["name"] as string : null;
+                    if (!string.IsNullOrEmpty(name))
+                        toolNames.Add("mcp__clarion-assistant__" + name);
+                }
+                servers["clarion-assistant"] = new Dictionary<string, object>
+                {
+                    { "type", "http" },
+                    { "url", string.Format("http://localhost:{0}/mcp", _port) },
+                    { "autoApprove", toolNames.ToArray() }
+                };
             }
 
-            var servers = new Dictionary<string, object>
-            {
-                { "clarion-assistant", new Dictionary<string, object>
-                    {
-                        { "type", "http" },
-                        { "url", string.Format("http://localhost:{0}/mcp", _port) },
-                        { "autoApprove", toolNames.ToArray() }
-                    }
-                }
-            };
-
-            // Conditionally add MultiTerminal
-            if (IncludeMultiTerminal && !string.IsNullOrEmpty(MultiTerminalMcpPath)
+            // Conditionally add MultiTerminal (Claude-only for now)
+            if (format == McpConfigFormat.Claude && IncludeMultiTerminal && !string.IsNullOrEmpty(MultiTerminalMcpPath)
                 && File.Exists(MultiTerminalMcpPath))
             {
-                servers["multiterminal"] = new Dictionary<string, object>
+                var mt = new Dictionary<string, object>
                 {
                     { "type", "stdio" },
                     { "command", "node" },
                     { "args", new string[] { MultiTerminalMcpPath } }
                 };
+                servers["multiterminal"] = mt;
             }
 
             // Add the multiterminal-channel MCP server so the embedded Claude receives
@@ -153,7 +169,7 @@ namespace ClarionAssistant.Services
             // and MULTITERMINAL_DOC_ID are exported from LaunchClaudeForTab per tab and
             // inherited by this stdio subprocess. --strict-mcp-config blocks user-level
             // mcpServers entries, so we must include the channel server here explicitly.
-            string channelPath = ResolveMultiTerminalChannelPath();
+            string channelPath = (format == McpConfigFormat.Claude) ? ResolveMultiTerminalChannelPath() : null;
             if (channelPath != null)
             {
                 servers["multiterminal-channel"] = new Dictionary<string, object>
@@ -215,7 +231,17 @@ namespace ClarionAssistant.Services
             if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
 
             string configPath = Path.Combine(dir, "mcp-config.json");
-            File.WriteAllText(configPath, GenerateMcpConfig());
+            File.WriteAllText(configPath, GenerateMcpConfig(McpConfigFormat.Claude));
+            return configPath;
+        }
+
+        public string WriteMcpConfigFile(string directory, McpConfigFormat format)
+        {
+            if (string.IsNullOrEmpty(directory)) throw new ArgumentNullException("directory");
+            if (!Directory.Exists(directory)) Directory.CreateDirectory(directory);
+
+            string configPath = Path.Combine(directory, "mcp-config.json");
+            File.WriteAllText(configPath, GenerateMcpConfig(format));
             return configPath;
         }
 

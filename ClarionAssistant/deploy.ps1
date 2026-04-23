@@ -17,14 +17,29 @@ $MSBuild     = "C:\Program Files\Microsoft Visual Studio\2022\Community\MSBuild\
 
 # Indexer build output (separate project, shares source files with ClarionCodeGraph)
 $IndexerDir    = "H:\DevLaptop\ClarionLSP\indexer"
-$IndexerFile   = Join-Path $IndexerDir "ClarionIndexer.csproj"
-$IndexerOutput = Join-Path $IndexerDir "bin\Debug"
+$IndexerFile   = "$IndexerDir\ClarionIndexer.csproj"
+$IndexerOutput = "$IndexerDir\bin\Debug"
 
 # Version-specific config
 $Versions = @{
-    "12" = @{ Root = "C:\Clarion12";        Output = "bin\Debug-C12" }
-    "11" = @{ Root = "C:\Clarion11-13372";  Output = "bin\Debug-C11" }
-    "10" = @{ Root = @("C:\Clarion10", "C:\Clarion10v8"); Output = "bin\Debug-C10" }
+    "12" = @{ Root = "C:\Clarion12";                           Output = "bin\Debug-C12" }
+    "11" = @{ Root = @("d:\Clarion11.1EE", "C:\Clarion11-13372"); Output = "bin\Debug-C11" }
+    "10" = @{ Root = @("C:\Clarion10", "C:\Clarion10v8");    Output = "bin\Debug-C10" }
+}
+
+function Resolve-BuildOutputDir {
+    param(
+        [string]$ProjectDir,
+        [string]$PreferredOutput
+    )
+
+    $preferred = Join-Path $ProjectDir $PreferredOutput
+    if (Test-Path $preferred) { return $preferred }
+
+    $fallback = Join-Path $ProjectDir "bin\Debug-C"
+    if (Test-Path $fallback) { return $fallback }
+
+    return $preferred
 }
 
 # Which versions to process
@@ -79,11 +94,16 @@ if (-not $NoBuild) {
         Write-Host "Build succeeded for Clarion $ver." -ForegroundColor Green
     }
 
-    Write-Host ""
-    Write-Host "Building indexer..." -ForegroundColor Cyan
-    & $MSBuild $IndexerFile /p:Configuration=Debug /v:minimal
-    if ($LASTEXITCODE -ne 0) { Write-Host "Indexer build failed." -ForegroundColor Red; exit 1 }
-    Write-Host "Indexer build succeeded." -ForegroundColor Green
+    if (Test-Path $IndexerFile) {
+        Write-Host ""
+        Write-Host "Building indexer..." -ForegroundColor Cyan
+        & $MSBuild $IndexerFile /p:Configuration=Debug /v:minimal
+        if ($LASTEXITCODE -ne 0) { Write-Host "Indexer build failed." -ForegroundColor Red; exit 1 }
+        Write-Host "Indexer build succeeded." -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Host "Skipping indexer build (project not found: $IndexerFile)" -ForegroundColor Yellow
+    }
 }
 
 # --- Kill Clarion IDE if requested ---
@@ -99,7 +119,7 @@ if ($Kill) {
 # --- Deploy each version ---
 foreach ($ver in $TargetVersions) {
     $cfg         = $Versions[$ver]
-    $BuildOutput = Join-Path $ProjectDir $cfg.Output
+    $BuildOutput = Resolve-BuildOutputDir -ProjectDir $ProjectDir -PreferredOutput $cfg.Output
 
     # Support single root or array of roots
     $Roots = @($cfg.Root) | ForEach-Object { $_ }
@@ -157,29 +177,33 @@ foreach ($ver in $TargetVersions) {
             "x86"
         )
 
-        foreach ($item in $IndexerItems) {
-            $src = Join-Path $IndexerOutput $item
-            $dst = Join-Path $DeployDir $item
+        if (Test-Path $IndexerOutput) {
+            foreach ($item in $IndexerItems) {
+                $src = "$IndexerOutput\$item"
+                $dst = Join-Path $DeployDir $item
 
-            if (-not (Test-Path $src)) {
-                Write-Host "  SKIP  $item (not found in indexer output)" -ForegroundColor DarkGray
-                continue
-            }
-
-            try {
-                if (Test-Path $src -PathType Container) {
-                    if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-                    Copy-Item $src $dst -Recurse -Force
-                } else {
-                    Copy-Item $src $dst -Force
+                if (-not (Test-Path $src)) {
+                    Write-Host "  SKIP  $item (not found in indexer output)" -ForegroundColor DarkGray
+                    continue
                 }
-                Write-Host "  OK    $item (indexer)" -ForegroundColor Green
-                $copied++
+
+                try {
+                    if (Test-Path $src -PathType Container) {
+                        if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
+                        Copy-Item $src $dst -Recurse -Force
+                    } else {
+                        Copy-Item $src $dst -Force
+                    }
+                    Write-Host "  OK    $item (indexer)" -ForegroundColor Green
+                    $copied++
+                }
+                catch {
+                    Write-Host "  FAIL  $item - $($_.Exception.Message)" -ForegroundColor Red
+                    $failed++
+                }
             }
-            catch {
-                Write-Host "  FAIL  $item - $($_.Exception.Message)" -ForegroundColor Red
-                $failed++
-            }
+        } else {
+            Write-Host "  SKIP  indexer output (not found: $IndexerOutput)" -ForegroundColor DarkGray
         }
 
         # --- Deploy SQLite FTS5 DLLs (after indexer, so correct version wins) ---
@@ -211,42 +235,47 @@ foreach ($ver in $TargetVersions) {
         # --- Deploy LSP Server ---
         $LspDestDir = Join-Path $DeployDir "lsp-server"
 
-        # Copy compiled server JS + common shared code
-        foreach ($outDir in @("out\server", "out\common")) {
-            $LspOutSrc = Join-Path $LspSourceDir $outDir
-            if (Test-Path $LspOutSrc) {
-                $LspOutDst = Join-Path $LspDestDir $outDir
-                if (Test-Path $LspOutDst) { Remove-Item $LspOutDst -Recurse -Force }
-                New-Item -Path $LspOutDst -ItemType Directory -Force | Out-Null
-                Copy-Item "$LspOutSrc\*" $LspOutDst -Recurse -Force
-                Write-Host "  OK    lsp-server\$outDir" -ForegroundColor Green
-                $copied++
+        if (Test-Path $LspSourceDir) {
+            # Copy compiled server JS + common shared code
+            foreach ($outDir in @("out\server", "out\common")) {
+                $LspOutSrc = "$LspSourceDir\$outDir"
+                if (Test-Path $LspOutSrc) {
+                    $LspOutDst = Join-Path $LspDestDir $outDir
+                    if (Test-Path $LspOutDst) { Remove-Item $LspOutDst -Recurse -Force }
+                    New-Item -Path $LspOutDst -ItemType Directory -Force | Out-Null
+                    Copy-Item "$LspOutSrc\*" $LspOutDst -Recurse -Force
+                    Write-Host "  OK    lsp-server\$outDir" -ForegroundColor Green
+                    $copied++
+                }
             }
-        }
-        if (-not (Test-Path (Join-Path $LspSourceDir "out\server"))) {
-            Write-Host "  SKIP  lsp-server (ClarionLSP not found)" -ForegroundColor DarkGray
-        }
 
-        # Copy bundled node.exe (so end users don't need Node.js installed)
-        $NodeExeSrc = "C:\Program Files\nodejs\node.exe"
-        if (Test-Path $NodeExeSrc) {
-            Copy-Item $NodeExeSrc (Join-Path $LspDestDir "node.exe") -Force
-            Write-Host "  OK    lsp-server\node.exe" -ForegroundColor Green
-            $copied++
+            if (-not (Test-Path "$LspSourceDir\out\server")) {
+                Write-Host "  SKIP  lsp-server (ClarionLSP build output not found)" -ForegroundColor DarkGray
+            }
+
+            # Copy bundled node.exe (so end users don't need Node.js installed)
+            $NodeExeSrc = "C:\Program Files\nodejs\node.exe"
+            if (Test-Path $NodeExeSrc) {
+                Copy-Item $NodeExeSrc (Join-Path $LspDestDir "node.exe") -Force
+                Write-Host "  OK    lsp-server\node.exe" -ForegroundColor Green
+                $copied++
+            } else {
+                Write-Host "  SKIP  node.exe (not found at $NodeExeSrc)" -ForegroundColor DarkGray
+            }
+
+            # Copy required node_modules
+            foreach ($mod in $LspNodeModules) {
+                $modSrc = "$LspSourceDir\node_modules\$mod"
+                $modDst = Join-Path $LspDestDir "node_modules\$mod"
+                if (Test-Path $modSrc) {
+                    if (Test-Path $modDst) { Remove-Item $modDst -Recurse -Force }
+                    Copy-Item $modSrc $modDst -Recurse -Force
+                    Write-Host "  OK    lsp-server\node_modules\$mod" -ForegroundColor Green
+                    $copied++
+                }
+            }
         } else {
-            Write-Host "  SKIP  node.exe (not found at $NodeExeSrc)" -ForegroundColor DarkGray
-        }
-
-        # Copy required node_modules
-        foreach ($mod in $LspNodeModules) {
-            $modSrc = Join-Path $LspSourceDir "node_modules\$mod"
-            $modDst = Join-Path $LspDestDir "node_modules\$mod"
-            if (Test-Path $modSrc) {
-                if (Test-Path $modDst) { Remove-Item $modDst -Recurse -Force }
-                Copy-Item $modSrc $modDst -Recurse -Force
-                Write-Host "  OK    lsp-server\node_modules\$mod" -ForegroundColor Green
-                $copied++
-            }
+            Write-Host "  SKIP  lsp-server (ClarionLSP not found)" -ForegroundColor DarkGray
         }
 
         # --- Version summary ---

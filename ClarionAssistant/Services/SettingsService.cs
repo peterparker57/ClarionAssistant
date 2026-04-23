@@ -129,5 +129,66 @@ namespace ClarionAssistant.Services
                 if (kv.Value) return kv.Key;
             return commands.Count > 0 ? commands[0].Key : "claude";
         }
+
+        // ── Copilot Commands ─────────────────────────────────────
+
+        /// <summary>
+        /// Returns the list of configured Copilot launch commands.
+        /// Format in settings.txt: Copilot.Commands = command1|0;command2|1
+        /// where |1 = default.
+        /// </summary>
+        public List<KeyValuePair<string, bool>> GetCopilotCommands()
+        {
+            var result = new List<KeyValuePair<string, bool>>();
+            string raw = Get("Copilot.Commands");
+            if (!string.IsNullOrEmpty(raw))
+            {
+                foreach (string entry in raw.Split(';'))
+                {
+                    if (string.IsNullOrWhiteSpace(entry)) continue;
+                    int pipe = entry.LastIndexOf('|');
+                    if (pipe > 0)
+                    {
+                        string cmd = entry.Substring(0, pipe);
+                        bool isDefault = entry.Substring(pipe + 1) == "1";
+                        result.Add(new KeyValuePair<string, bool>(cmd, isDefault));
+                    }
+                    else
+                    {
+                        result.Add(new KeyValuePair<string, bool>(entry.Trim(), false));
+                    }
+                }
+            }
+
+            if (result.Count == 0)
+            {
+                result.Add(new KeyValuePair<string, bool>("copilot", true));
+                result.Add(new KeyValuePair<string, bool>("gh copilot", false));
+                result.Add(new KeyValuePair<string, bool>("copilot --allow-all-tools", false));
+            }
+
+            return result;
+        }
+
+        public void SetCopilotCommands(List<KeyValuePair<string, bool>> commands)
+        {
+            var sb = new StringBuilder();
+            for (int i = 0; i < commands.Count; i++)
+            {
+                if (i > 0) sb.Append(';');
+                sb.Append(commands[i].Key);
+                sb.Append('|');
+                sb.Append(commands[i].Value ? "1" : "0");
+            }
+            Set("Copilot.Commands", sb.ToString());
+        }
+
+        public string GetDefaultCopilotCommand()
+        {
+            var commands = GetCopilotCommands();
+            foreach (var kv in commands)
+                if (kv.Value) return kv.Key;
+            return commands.Count > 0 ? commands[0].Key : "copilot";
+        }
     }
 }

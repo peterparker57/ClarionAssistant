@@ -52,6 +52,16 @@
       <HintPath>$(ClarionRoot)\bin\ICSharpCode.SharpDevelop.dll</HintPath>
       <Private>False</Private>
     </Reference>
+    <!-- Old-style csproj + PackageReference is inconsistent under dotnet/msbuild for this project.
+         Add explicit WebView2 references so compile-time assemblies are always resolved after restore. -->
+    <Reference Include="Microsoft.Web.WebView2.Core">
+      <HintPath>$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.Core.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.Web.WebView2.WinForms">
+      <HintPath>$(PkgMicrosoft_Web_WebView2)\lib\net462\Microsoft.Web.WebView2.WinForms.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AgentPanelPad.cs" />
@@ -108,6 +118,7 @@
     <Compile Include="Terminal\LspStatusBar.cs" />
     <Compile Include="Dialogs\DiagnosticsForm.cs" />
     <Compile Include="Services\ClaudeProcessManager.cs" />
+    <Compile Include="Services\CopilotProcessManager.cs" />
     <Compile Include="TaskLifecycleBoard\TaskLifecycleBoardForm.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <!-- CodeGraph engine (self-contained, no external dependencies) -->
@@ -161,6 +172,9 @@
     <Content Include="Terminal\clarion-assistant-prompt.md">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Terminal\AGENTS.md">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="Terminal\ca-statusline.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -178,7 +192,16 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Web.WebView2">
       <Version>1.0.3800.47</Version>
+      <GeneratePathProperty>true</GeneratePathProperty>
     </PackageReference>
   </ItemGroup>
+  <Target Name="ValidateClarionReferences" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(ClarionRoot)' == ''"
+           Text="ClarionRoot is not set. Create Directory.Build.props.user or pass /p:ClarionRoot=C:\Path\To\Clarion." />
+    <Error Condition="!Exists('$(ClarionRoot)\bin\ICSharpCode.Core.dll')"
+           Text="Missing Clarion dependency: $(ClarionRoot)\bin\ICSharpCode.Core.dll. Set ClarionRoot to your Clarion installation folder." />
+    <Error Condition="!Exists('$(ClarionRoot)\bin\ICSharpCode.SharpDevelop.dll')"
+           Text="Missing Clarion dependency: $(ClarionRoot)\bin\ICSharpCode.SharpDevelop.dll. Set ClarionRoot to your Clarion installation folder." />
+  </Target>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

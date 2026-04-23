@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/peterparker57/ClarionAssistant/releases/latest"><img src="https://img.shields.io/github/v/release/peterparker57/ClarionAssistant?include_prereleases&label=download&style=for-the-badge" alt="Download"></a>
   <img src="https://img.shields.io/badge/Clarion-10%20%7C%2011%20%7C%2012-blue?style=for-the-badge" alt="Clarion 10 | 11 | 12">
-  <img src="https://img.shields.io/badge/version-4.1-green?style=for-the-badge" alt="v4.1">
+  <img src="https://img.shields.io/badge/version-4.2-green?style=for-the-badge" alt="v4.2">
 </p>
 
 ---
@@ -39,6 +39,24 @@ Ask it to write Clarion code, explain procedures, refactor classes, build COM co
 - **Diff viewer** &mdash; Monaco-based side-by-side diffs with syntax highlighting
 - **Knowledge system** &mdash; persistent cross-session memory for decisions, patterns, and gotchas
 - **Zoom persistence** &mdash; Ctrl+mousewheel zoom is saved and restored across sessions
+
+---
+
+## What's New in v4.2
+
+### GitHub Copilot CLI Backend
+- **New Assistant Backend setting** (Settings → Launch) — switch between Claude Code and GitHub Copilot CLI per terminal session
+- **Copilot Commands** — configurable launch commands for Copilot (same Add/Edit/Delete/Set Default UI as Claude commands), with defaults: `copilot`, `gh copilot`, `copilot --allow-all-tools`
+- **Copilot Model selector** (Settings → General) — dropdown with all available Copilot models grouped by provider (GPT-5.x, Claude 4.x); model is passed via `--model` flag at launch
+- **Permission Mode** — choose between `Prompt` (default) or `Allow Tools` (`--allow-all-tools`)
+- **Extra Flags** — optional additional flags appended to the Copilot command
+- **MCP integration** — Clarion Assistant MCP server auto-configured for Copilot with `tools: ["*"]` format; custom instructions deployed via `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`
+- **Per-tab backend tracking** — each tab remembers its backend (`AssistantBackend` property) so status bar and exit handling work correctly even if the setting changes mid-session
+
+### Build improvements
+- Explicit WebView2 assembly references in `.csproj` to fix compile-time resolution under MSBuild
+- `ValidateClarionReferences` MSBuild target for clearer error messages when `ClarionRoot` is not set
+- `deploy.ps1` now skips the indexer build gracefully when the project is not present
 
 ---
 
