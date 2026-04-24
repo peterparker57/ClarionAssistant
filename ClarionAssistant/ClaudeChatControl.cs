@@ -2410,159 +2410,19 @@ namespace ClarionAssistant
 
             try
             {
-                tab.Terminal = new ConPtyTerminal();
-                tab.Terminal.DataReceived += data => OnTabTerminalDataReceived(tab, data);
-                tab.Terminal.ProcessExited += (s, ev) => OnTabTerminalProcessExited(tab);
+                var ctx = PrepareBackendLaunch(tab, "Claude", requirePwsh7: false);
+                if (ctx == null) return;
+                System.Diagnostics.Debug.WriteLine("[LaunchClaude] pwsh=" + ctx.Pwsh + ", workDir=" + ctx.WorkDir);
 
-                string pwsh = FindPowerShell();
-                string workDir = !string.IsNullOrEmpty(tab.WorkingDirectory) && Directory.Exists(tab.WorkingDirectory)
-                    ? tab.WorkingDirectory
-                    : GetWorkingDirectory();
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] pwsh=" + pwsh + ", workDir=" + workDir);
+                var built = BuildClaudeCommand(tab, ctx);
+                if (built == null) return; // abort already handled inside the builder
 
-                string mcpArg = "";
-                if (!string.IsNullOrEmpty(_mcpConfigPath) && File.Exists(_mcpConfigPath))
-                {
-                    string safePath = _mcpConfigPath.Replace("'", "''");
-                    mcpArg = $" --mcp-config '{safePath}'";
-                }
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] mcpConfigPath=" + _mcpConfigPath + ", mcpArg=" + mcpArg);
-
-                DeployClaudeMd(workDir);
-
-                if (_knowledgeService != null)
-                {
-                    try { tab.SessionId = _knowledgeService.StartSession(workDir); }
-                    catch { }
-                }
-
-                string systemPromptExtra = BuildSystemPromptInjection(workDir);
-                string initialPrompt = BuildInitialPrompt(workDir);
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] prompts built");
-
-                string tempDir = Path.Combine(Path.GetTempPath(), "ClarionAssistant");
-                Directory.CreateDirectory(tempDir);
-
-                string tabSuffix = tab.Id;
-                string extraFlags = "";
-                var tempFiles = new System.Collections.Generic.List<string>();
-
-                if (!string.IsNullOrEmpty(systemPromptExtra))
-                {
-                    string promptFile = Path.Combine(tempDir, "system-prompt-extra-" + tabSuffix + ".md");
-                    File.WriteAllText(promptFile, systemPromptExtra, System.Text.Encoding.UTF8);
-                    extraFlags += $" --append-system-prompt-file '{promptFile.Replace("'", "''")}'";
-                    tempFiles.Add(promptFile);
-                }
-
-                string initialPromptFile = null;
-                if (!string.IsNullOrEmpty(initialPrompt))
-                {
-                    initialPromptFile = Path.Combine(tempDir, "initial-prompt-" + tabSuffix + ".txt");
-                    File.WriteAllText(initialPromptFile, initialPrompt, System.Text.Encoding.UTF8);
-                    tempFiles.Add(initialPromptFile);
-                }
-
-                string envSetup = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8; ";
-                string safeWorkDir = workDir.Replace("'", "''");
-                string allowedTools = "mcp__clarion-assistant__*,Read,Edit,Write,Bash,Glob,Grep";
-                if (_mcpServer != null && _mcpServer.IncludeMultiTerminal)
-                    allowedTools += ",mcp__multiterminal__*";
-                // Allow the multiterminal-channel plugin's tools when it's loaded
-                // via mcp-config — prefix is different than when loaded as a plugin.
-                if (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
-                    allowedTools += ",mcp__multiterminal-channel__*";
-
-                string pluginArg = "";
-                string pluginDir = GetClarionAssistantPluginPath();
-                if (pluginDir != null)
-                {
-                    string safePluginDir = pluginDir.Replace("'", "''");
-                    pluginArg = $" --plugin-dir '{safePluginDir}'";
-                }
-
-                string colorfgbg = _isDarkTheme ? "$env:COLORFGBG='15;0'" : "$env:COLORFGBG='0;15'";
-                // Build the base invocation from the user-selected Claude command.
-                // For bare "claude", resolve to the full path; for anything else,
-                // tokenize and quote so shell metacharacters in settings can't
-                // chain additional commands into the pwsh -Command payload.
-                string claudeCmdRaw = _settings.GetDefaultClaudeCommand();
-                string claudeBase;
-                if (claudeCmdRaw == "claude")
-                {
-                    string resolved = Services.ClaudeProcessManager.FindClaudePathStatic();
-                    claudeBase = resolved != null
-                        ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
-                        : "claude";
-                }
-                else
-                {
-                    try
-                    {
-                        claudeBase = Services.PwshCommandQuoter.BuildInvocation(claudeCmdRaw);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        UpdateStatus("Claude launch aborted: " + ex.Message);
-                        tab.AssistantLaunched = false;
-                        tab.AssistantBackend = null;
-                        return;
-                    }
-                }
-                // Set CA tab ID so the statusline script can write per-tab status
-                string tabEnv = $"$env:CLARIONASSISTANT_TAB='{tab.Id}'";
-
-                // Compute the CA-prefixed agent name + stable docId for this tab and export
-                // them so the multiterminal-channel MCP server (loaded via mcp-config) registers
-                // with the MultiTerminal broker under the right identity.
-                _caTabCounter++;
-                string agentName = Services.CaAgentIdentity.NormalizeAgentName(tab.Name, _caTabCounter);
-                string docId = Services.CaAgentIdentity.ComputeStableDocId(agentName);
-                string safeAgentName = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(agentName);
-                string safeDocId = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(docId);
-                string channelEnv = $"$env:MULTITERMINAL_NAME='{safeAgentName}'; $env:MULTITERMINAL_DOC_ID='{safeDocId}'";
-                System.Diagnostics.Debug.WriteLine(
-                    "[LaunchClaude] Channel identity: name=" + agentName + ", docId=" + docId);
-
-                // Authorize the multiterminal-channel MCP server for inbound channel notifications.
-                // Without this flag, mcp.notification('notifications/claude/channel') is silently ignored.
-                // Using --dangerously-load-development-channels skips the interactive approval prompt,
-                // which is appropriate for a controlled embedded environment where we control which servers load.
-                string channelFlag = (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
-                    ? " --dangerously-load-development-channels server:multiterminal-channel"
-                    : "";
-                // Auto-update Claude Code before launching if enabled in settings
-                string updatePrefix = "";
-                if ((_settings.Get("Claude.AutoUpdate") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase))
-                {
-                    // Resolve claude path for the update command too
-                    string updateCmd = "claude";
-                    string resolvedUpdate = Services.ClaudeProcessManager.FindClaudePathStatic();
-                    if (resolvedUpdate != null)
-                        updateCmd = "& '" + resolvedUpdate.Replace("'", "''") + "'";
-                    updatePrefix = $"Write-Host 'Checking for Claude Code updates...' -ForegroundColor Cyan; {updateCmd} update; ";
-                }
-
-                string claudeCmd = $"cd '{safeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {channelEnv}; {colorfgbg}; {updatePrefix}{claudeBase}{mcpArg}{pluginArg} --strict-mcp-config{channelFlag} --allowedTools '{allowedTools}'{extraFlags}";
-
-                if (initialPromptFile != null)
-                {
-                    string safeFile = initialPromptFile.Replace("'", "''");
-                    claudeCmd += $" (Get-Content -Raw '{safeFile}')";
-                }
-
-                string commandLine = $"\"{pwsh}\" -NoLogo -ExecutionPolicy Bypass -NoExit -Command \"{envSetup}{claudeCmd}\"";
-
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] cols=" + tab.Renderer.VisibleCols + ", rows=" + tab.Renderer.VisibleRows);
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] Starting ConPTY: " + commandLine.Substring(0, Math.Min(200, commandLine.Length)));
-                tab.Terminal.Start(tab.Renderer.VisibleCols, tab.Renderer.VisibleRows, commandLine, workDir);
-                System.Diagnostics.Debug.WriteLine("[LaunchClaude] ConPTY started OK");
-                UpdateStatus("MCP: port " + (_mcpServer?.Port ?? 0) + " | Claude Code running");
+                StartTabTerminal(tab, ctx, built.Cmd, "Claude Code running", "[LaunchClaude]");
 
                 // Clean up temp prompt files after Claude Code has read them
-                if (tempFiles.Count > 0)
+                if (built.TempFiles.Count > 0)
                 {
-                    var filesToDelete = new System.Collections.Generic.List<string>(tempFiles);
+                    var filesToDelete = new System.Collections.Generic.List<string>(built.TempFiles);
                     System.Threading.Tasks.Task.Delay(30000).ContinueWith(_ =>
                     {
                         foreach (var f in filesToDelete)
@@ -2585,147 +2445,354 @@ namespace ClarionAssistant
 
             try
             {
-                tab.Terminal = new ConPtyTerminal();
-                tab.Terminal.DataReceived += data => OnTabTerminalDataReceived(tab, data);
-                tab.Terminal.ProcessExited += (s, ev) => OnTabTerminalProcessExited(tab);
+                var ctx = PrepareBackendLaunch(tab, "Copilot", requirePwsh7: true);
+                if (ctx == null) return;
 
-                string pwsh = FindPowerShell(requirePwsh: true);
-                if (string.IsNullOrEmpty(pwsh) || !File.Exists(pwsh))
-                {
-                    UpdateStatus("Copilot requires pwsh.exe");
-                    try
-                    {
-                        MessageBox.Show("GitHub Copilot CLI integration requires PowerShell 7 (pwsh.exe).\n\nInstall PowerShell 7 and try again.",
-                            "Copilot CLI", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                    }
-                    catch { }
-                    tab.AssistantLaunched = false;
-                    tab.AssistantBackend = null;
-                    try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
-                    tab.Terminal = null;
-                    return;
-                }
+                var built = BuildCopilotCommand(tab, ctx);
+                if (built == null) return; // abort already handled inside the builder
 
-                string workDir = !string.IsNullOrEmpty(tab.WorkingDirectory) && Directory.Exists(tab.WorkingDirectory)
-                    ? tab.WorkingDirectory
-                    : GetWorkingDirectoryFor("Copilot");
-
-                string copilotHome = GetCopilotHomeDir();
-                string mcpConfig = null;
-                try
-                {
-                    if (_mcpServer != null)
-                        mcpConfig = _mcpServer.WriteMcpConfigFile(copilotHome, Services.McpServer.McpConfigFormat.Copilot);
-                }
-                catch { }
-
-                string instructionsDir = DeployCopilotInstructions(copilotHome);
-
-                string envSetup = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8; ";
-                string safeWorkDir = workDir.Replace("'", "''");
-                string safeCopilotHome = copilotHome.Replace("'", "''");
-                string safeInstrDir = (instructionsDir ?? "").Replace("'", "''");
-                string safeMcpConfig = (mcpConfig ?? "").Replace("'", "''");
-
-                // Build the base invocation from the user-selected Copilot command.
-                // For bare "copilot", resolve to the full path; for anything else,
-                // tokenize and quote so shell metacharacters in settings can't
-                // chain additional commands into the pwsh -Command payload.
-                string copilotCmdRaw = _settings.GetDefaultCopilotCommand();
-                string copilotBase;
-                if (copilotCmdRaw == "copilot")
-                {
-                    string resolved = Services.CopilotProcessManager.FindCopilotPathStatic();
-                    copilotBase = resolved != null
-                        ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
-                        : "copilot";
-                }
-                else
-                {
-                    try
-                    {
-                        copilotBase = Services.PwshCommandQuoter.BuildInvocation(copilotCmdRaw);
-                    }
-                    catch (ArgumentException ex)
-                    {
-                        UpdateStatus("Copilot launch aborted: " + ex.Message);
-                        tab.AssistantLaunched = false;
-                        tab.AssistantBackend = null;
-                        try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
-                        tab.Terminal = null;
-                        return;
-                    }
-                }
-
-                // Copilot.ExtraFlags is user-controllable; tokenize + quote each
-                // token so a settings value like "--verbose; Remove-Item ..." can't
-                // break out of the pwsh payload.
-                string extraFlagsRaw = _settings.Get("Copilot.ExtraFlags") ?? "";
-                string extraFlags;
-                try
-                {
-                    string built = Services.PwshCommandQuoter.BuildFlags(extraFlagsRaw);
-                    extraFlags = string.IsNullOrEmpty(built) ? string.Empty : " " + built;
-                }
-                catch (ArgumentException ex)
-                {
-                    UpdateStatus("Copilot launch aborted: " + ex.Message);
-                    tab.AssistantLaunched = false;
-                    tab.AssistantBackend = null;
-                    try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
-                    tab.Terminal = null;
-                    return;
-                }
-
-                string copilotModelVal = (_settings.Get("Copilot.Model") ?? "").Trim();
-                string modelFlag = string.IsNullOrEmpty(copilotModelVal)
-                    ? string.Empty
-                    : $" --model '{copilotModelVal.Replace("'", "''")}'";
-
-                string permissionMode = (_settings.Get("Copilot.PermissionMode") ?? "prompt").Trim();
-                string permissionFlags = string.Equals(permissionMode, "allow", StringComparison.OrdinalIgnoreCase)
-                    ? " --allow-all-tools"
-                    : string.Empty;
-                // The '@' prefix on the path tells Copilot CLI to load the MCP
-                // config from a file rather than parse the argument as inline
-                // JSON. Copilot's own docs are quiet on this sigil; keep this
-                // comment if a future CLI upgrade changes the convention.
-                string mcpConfigArg = string.IsNullOrEmpty(safeMcpConfig)
-                    ? string.Empty
-                    : $" --additional-mcp-config '@{safeMcpConfig}'";
-
-                // Copilot CLI picks up custom instructions via COPILOT_CUSTOM_INSTRUCTIONS_DIRS.
-                // For MCP, pass the generated config explicitly because `--config-dir`/COPILOT_HOME
-                // did not reliably surface the clarion-assistant server in practice.
-                //
-                // Note on the `--add-dir` below: Copilot's CWD already covers workDir
-                // via the preceding `cd`, but `--add-dir` additionally puts the path
-                // on Copilot's allowed-paths list for cross-directory tool operations.
-                // The two are intentionally both set, not redundant.
-                string cmd =
-                    $"cd '{safeWorkDir}'; " +
-                    "$env:CLARION_ASSISTANT_EMBEDDED='1'; " +
-                    $"$env:COPILOT_HOME='{safeCopilotHome}'; " +
-                    (string.IsNullOrEmpty(safeInstrDir) ? "" : $"$env:COPILOT_CUSTOM_INSTRUCTIONS_DIRS='{safeInstrDir}'; ") +
-                    copilotBase +
-                    $" --config-dir '{safeCopilotHome}'" +
-                    mcpConfigArg +
-                    $" --add-dir '{safeWorkDir}'" +
-                    modelFlag +
-                    permissionFlags +
-                    extraFlags;
-
-                string commandLine = $"\"{pwsh}\" -NoLogo -ExecutionPolicy Bypass -NoExit -Command \"{envSetup}{cmd}\"";
-
-                System.Diagnostics.Debug.WriteLine("[LaunchCopilot] mcpConfig=" + (mcpConfig ?? "(none)") + ", home=" + copilotHome);
-                System.Diagnostics.Debug.WriteLine("[LaunchCopilot] cols=" + tab.Renderer.VisibleCols + ", rows=" + tab.Renderer.VisibleRows);
-                tab.Terminal.Start(tab.Renderer.VisibleCols, tab.Renderer.VisibleRows, commandLine, workDir);
-                UpdateStatus("MCP: port " + (_mcpServer?.Port ?? 0) + " | Copilot CLI running");
+                StartTabTerminal(tab, ctx, built.Cmd, "Copilot CLI running", "[LaunchCopilot]");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("[LaunchCopilot] EXCEPTION: " + ex);
             }
+        }
+
+        /// <summary>Shared launch state threaded from the prepare helper to the
+        /// per-backend command builder and the start helper.</summary>
+        private class LaunchContext
+        {
+            public string Pwsh;
+            public string WorkDir;
+            public string SafeWorkDir;
+            public string EnvSetup;
+        }
+
+        /// <summary>Per-backend builder output. Cmd is the pwsh inner command;
+        /// TempFiles is optional (Claude writes per-tab prompt files it wants
+        /// deleted after the CLI reads them).</summary>
+        private class BuiltBackendCommand
+        {
+            public string Cmd;
+            public System.Collections.Generic.List<string> TempFiles = new System.Collections.Generic.List<string>();
+        }
+
+        /// <summary>
+        /// Shared pre-launch scaffolding: create ConPtyTerminal + wire events,
+        /// locate pwsh (optionally require PS7), resolve per-backend workDir,
+        /// and return a LaunchContext for the builder to consume. Returns null
+        /// if pwsh is required-and-missing (handler shows a message + calls
+        /// AbortLaunch before returning).
+        /// </summary>
+        private LaunchContext PrepareBackendLaunch(TerminalTab tab, string backendName, bool requirePwsh7)
+        {
+            tab.Terminal = new ConPtyTerminal();
+            tab.Terminal.DataReceived += data => OnTabTerminalDataReceived(tab, data);
+            tab.Terminal.ProcessExited += (s, ev) => OnTabTerminalProcessExited(tab);
+
+            string pwsh = FindPowerShell(requirePwsh: requirePwsh7);
+            if (requirePwsh7 && (string.IsNullOrEmpty(pwsh) || !File.Exists(pwsh)))
+            {
+                UpdateStatus(backendName + " requires pwsh.exe");
+                try
+                {
+                    MessageBox.Show(
+                        "GitHub " + backendName + " CLI integration requires PowerShell 7 (pwsh.exe).\n\nInstall PowerShell 7 and try again.",
+                        backendName + " CLI", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch { }
+                AbortLaunch(tab);
+                return null;
+            }
+
+            string workDir = !string.IsNullOrEmpty(tab.WorkingDirectory) && Directory.Exists(tab.WorkingDirectory)
+                ? tab.WorkingDirectory
+                : GetWorkingDirectoryFor(backendName);
+
+            return new LaunchContext
+            {
+                Pwsh = pwsh,
+                WorkDir = workDir,
+                SafeWorkDir = workDir.Replace("'", "''"),
+                EnvSetup = "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; [Console]::InputEncoding = [System.Text.Encoding]::UTF8; ",
+            };
+        }
+
+        /// <summary>Reset tab state and dispose the half-initialized terminal
+        /// created in PrepareBackendLaunch. Safe to call after any failure in
+        /// the prepare or builder phases.</summary>
+        private void AbortLaunch(TerminalTab tab)
+        {
+            tab.AssistantLaunched = false;
+            tab.AssistantBackend = null;
+            try { if (tab.Terminal != null) tab.Terminal.Dispose(); } catch { }
+            tab.Terminal = null;
+        }
+
+        /// <summary>
+        /// Wrap the backend-specific inner command in pwsh's <c>-Command "..."</c>
+        /// shell, start ConPTY at the renderer's current grid size, and surface
+        /// the status line. The <paramref name="logTag"/> is a short prefix
+        /// (e.g. "[LaunchClaude]") used only for Debug.WriteLine context.
+        /// </summary>
+        private void StartTabTerminal(TerminalTab tab, LaunchContext ctx, string backendCmd, string statusLabel, string logTag)
+        {
+            string commandLine = $"\"{ctx.Pwsh}\" -NoLogo -ExecutionPolicy Bypass -NoExit -Command \"{ctx.EnvSetup}{backendCmd}\"";
+            System.Diagnostics.Debug.WriteLine(logTag + " cols=" + tab.Renderer.VisibleCols + ", rows=" + tab.Renderer.VisibleRows);
+            System.Diagnostics.Debug.WriteLine(logTag + " Starting ConPTY: " + commandLine.Substring(0, Math.Min(200, commandLine.Length)));
+            tab.Terminal.Start(tab.Renderer.VisibleCols, tab.Renderer.VisibleRows, commandLine, ctx.WorkDir);
+            System.Diagnostics.Debug.WriteLine(logTag + " ConPTY started OK");
+            UpdateStatus("MCP: port " + (_mcpServer?.Port ?? 0) + " | " + statusLabel);
+        }
+
+        /// <summary>
+        /// Claude-specific command assembly. Side effects: deploys CLAUDE.md to
+        /// workDir, starts a knowledge-service session on the tab, writes per-tab
+        /// temp prompt files (returned in TempFiles for deferred cleanup).
+        /// Returns null if the user-configured Claude command fails validation;
+        /// AbortLaunch is called in that case.
+        /// </summary>
+        private BuiltBackendCommand BuildClaudeCommand(TerminalTab tab, LaunchContext ctx)
+        {
+            string mcpArg = "";
+            if (!string.IsNullOrEmpty(_mcpConfigPath) && File.Exists(_mcpConfigPath))
+            {
+                string safePath = _mcpConfigPath.Replace("'", "''");
+                mcpArg = $" --mcp-config '{safePath}'";
+            }
+            System.Diagnostics.Debug.WriteLine("[LaunchClaude] mcpConfigPath=" + _mcpConfigPath + ", mcpArg=" + mcpArg);
+
+            DeployClaudeMd(ctx.WorkDir);
+
+            if (_knowledgeService != null)
+            {
+                try { tab.SessionId = _knowledgeService.StartSession(ctx.WorkDir); }
+                catch { }
+            }
+
+            string systemPromptExtra = BuildSystemPromptInjection(ctx.WorkDir);
+            string initialPrompt = BuildInitialPrompt(ctx.WorkDir);
+            System.Diagnostics.Debug.WriteLine("[LaunchClaude] prompts built");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "ClarionAssistant");
+            Directory.CreateDirectory(tempDir);
+
+            string tabSuffix = tab.Id;
+            string extraFlags = "";
+            var tempFiles = new System.Collections.Generic.List<string>();
+
+            if (!string.IsNullOrEmpty(systemPromptExtra))
+            {
+                string promptFile = Path.Combine(tempDir, "system-prompt-extra-" + tabSuffix + ".md");
+                File.WriteAllText(promptFile, systemPromptExtra, System.Text.Encoding.UTF8);
+                extraFlags += $" --append-system-prompt-file '{promptFile.Replace("'", "''")}'";
+                tempFiles.Add(promptFile);
+            }
+
+            string initialPromptFile = null;
+            if (!string.IsNullOrEmpty(initialPrompt))
+            {
+                initialPromptFile = Path.Combine(tempDir, "initial-prompt-" + tabSuffix + ".txt");
+                File.WriteAllText(initialPromptFile, initialPrompt, System.Text.Encoding.UTF8);
+                tempFiles.Add(initialPromptFile);
+            }
+
+            string allowedTools = "mcp__clarion-assistant__*,Read,Edit,Write,Bash,Glob,Grep";
+            if (_mcpServer != null && _mcpServer.IncludeMultiTerminal)
+                allowedTools += ",mcp__multiterminal__*";
+            // Allow the multiterminal-channel plugin's tools when it's loaded
+            // via mcp-config — prefix is different than when loaded as a plugin.
+            if (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
+                allowedTools += ",mcp__multiterminal-channel__*";
+
+            string pluginArg = "";
+            string pluginDir = GetClarionAssistantPluginPath();
+            if (pluginDir != null)
+            {
+                string safePluginDir = pluginDir.Replace("'", "''");
+                pluginArg = $" --plugin-dir '{safePluginDir}'";
+            }
+
+            string colorfgbg = _isDarkTheme ? "$env:COLORFGBG='15;0'" : "$env:COLORFGBG='0;15'";
+            // Build the base invocation from the user-selected Claude command.
+            // For bare "claude", resolve to the full path; for anything else,
+            // tokenize and quote so shell metacharacters in settings can't
+            // chain additional commands into the pwsh -Command payload.
+            string claudeCmdRaw = _settings.GetDefaultClaudeCommand();
+            string claudeBase;
+            if (claudeCmdRaw == "claude")
+            {
+                string resolved = Services.ClaudeProcessManager.FindClaudePathStatic();
+                claudeBase = resolved != null
+                    ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
+                    : "claude";
+            }
+            else
+            {
+                try
+                {
+                    claudeBase = Services.PwshCommandQuoter.BuildInvocation(claudeCmdRaw);
+                }
+                catch (ArgumentException ex)
+                {
+                    UpdateStatus("Claude launch aborted: " + ex.Message);
+                    AbortLaunch(tab);
+                    return null;
+                }
+            }
+            // Set CA tab ID so the statusline script can write per-tab status
+            string tabEnv = $"$env:CLARIONASSISTANT_TAB='{tab.Id}'";
+
+            // Compute the CA-prefixed agent name + stable docId for this tab and export
+            // them so the multiterminal-channel MCP server (loaded via mcp-config) registers
+            // with the MultiTerminal broker under the right identity.
+            _caTabCounter++;
+            string agentName = Services.CaAgentIdentity.NormalizeAgentName(tab.Name, _caTabCounter);
+            string docId = Services.CaAgentIdentity.ComputeStableDocId(agentName);
+            string safeAgentName = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(agentName);
+            string safeDocId = Services.CaAgentIdentity.EscapeForPowerShellSingleQuote(docId);
+            string channelEnv = $"$env:MULTITERMINAL_NAME='{safeAgentName}'; $env:MULTITERMINAL_DOC_ID='{safeDocId}'";
+            System.Diagnostics.Debug.WriteLine(
+                "[LaunchClaude] Channel identity: name=" + agentName + ", docId=" + docId);
+
+            // Authorize the multiterminal-channel MCP server for inbound channel notifications.
+            // Without this flag, mcp.notification('notifications/claude/channel') is silently ignored.
+            // Using --dangerously-load-development-channels skips the interactive approval prompt,
+            // which is appropriate for a controlled embedded environment where we control which servers load.
+            string channelFlag = (_mcpServer != null && _mcpServer.IncludeMultiTerminalChannel)
+                ? " --dangerously-load-development-channels server:multiterminal-channel"
+                : "";
+            // Auto-update Claude Code before launching if enabled in settings
+            string updatePrefix = "";
+            if ((_settings.Get("Claude.AutoUpdate") ?? "").Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                // Resolve claude path for the update command too
+                string updateCmd = "claude";
+                string resolvedUpdate = Services.ClaudeProcessManager.FindClaudePathStatic();
+                if (resolvedUpdate != null)
+                    updateCmd = "& '" + resolvedUpdate.Replace("'", "''") + "'";
+                updatePrefix = $"Write-Host 'Checking for Claude Code updates...' -ForegroundColor Cyan; {updateCmd} update; ";
+            }
+
+            string claudeCmd = $"cd '{ctx.SafeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {channelEnv}; {colorfgbg}; {updatePrefix}{claudeBase}{mcpArg}{pluginArg} --strict-mcp-config{channelFlag} --allowedTools '{allowedTools}'{extraFlags}";
+
+            if (initialPromptFile != null)
+            {
+                string safeFile = initialPromptFile.Replace("'", "''");
+                claudeCmd += $" (Get-Content -Raw '{safeFile}')";
+            }
+
+            return new BuiltBackendCommand { Cmd = claudeCmd, TempFiles = tempFiles };
+        }
+
+        /// <summary>
+        /// Copilot-specific command assembly. Side effects: writes per-session
+        /// MCP config + AGENTS.md to the Copilot home dir. Returns null if the
+        /// user-configured Copilot command or Copilot.ExtraFlags fails validation;
+        /// AbortLaunch is called in that case.
+        /// </summary>
+        private BuiltBackendCommand BuildCopilotCommand(TerminalTab tab, LaunchContext ctx)
+        {
+            string copilotHome = GetCopilotHomeDir();
+            string mcpConfig = null;
+            try
+            {
+                if (_mcpServer != null)
+                    mcpConfig = _mcpServer.WriteMcpConfigFile(copilotHome, Services.McpServer.McpConfigFormat.Copilot);
+            }
+            catch { }
+
+            string instructionsDir = DeployCopilotInstructions(copilotHome);
+
+            string safeCopilotHome = copilotHome.Replace("'", "''");
+            string safeInstrDir = (instructionsDir ?? "").Replace("'", "''");
+            string safeMcpConfig = (mcpConfig ?? "").Replace("'", "''");
+
+            // Build the base invocation from the user-selected Copilot command.
+            // For bare "copilot", resolve to the full path; for anything else,
+            // tokenize and quote so shell metacharacters in settings can't
+            // chain additional commands into the pwsh -Command payload.
+            string copilotCmdRaw = _settings.GetDefaultCopilotCommand();
+            string copilotBase;
+            if (copilotCmdRaw == "copilot")
+            {
+                string resolved = Services.CopilotProcessManager.FindCopilotPathStatic();
+                copilotBase = resolved != null
+                    ? "& " + Services.PwshCommandQuoter.QuoteLiteral(resolved)
+                    : "copilot";
+            }
+            else
+            {
+                try
+                {
+                    copilotBase = Services.PwshCommandQuoter.BuildInvocation(copilotCmdRaw);
+                }
+                catch (ArgumentException ex)
+                {
+                    UpdateStatus("Copilot launch aborted: " + ex.Message);
+                    AbortLaunch(tab);
+                    return null;
+                }
+            }
+
+            // Copilot.ExtraFlags is user-controllable; tokenize + quote each
+            // token so a settings value like "--verbose; Remove-Item ..." can't
+            // break out of the pwsh payload.
+            string extraFlagsRaw = _settings.Get("Copilot.ExtraFlags") ?? "";
+            string extraFlags;
+            try
+            {
+                string builtFlags = Services.PwshCommandQuoter.BuildFlags(extraFlagsRaw);
+                extraFlags = string.IsNullOrEmpty(builtFlags) ? string.Empty : " " + builtFlags;
+            }
+            catch (ArgumentException ex)
+            {
+                UpdateStatus("Copilot launch aborted: " + ex.Message);
+                AbortLaunch(tab);
+                return null;
+            }
+
+            string copilotModelVal = (_settings.Get("Copilot.Model") ?? "").Trim();
+            string modelFlag = string.IsNullOrEmpty(copilotModelVal)
+                ? string.Empty
+                : $" --model '{copilotModelVal.Replace("'", "''")}'";
+
+            string permissionMode = (_settings.Get("Copilot.PermissionMode") ?? "prompt").Trim();
+            string permissionFlags = string.Equals(permissionMode, "allow", StringComparison.OrdinalIgnoreCase)
+                ? " --allow-all-tools"
+                : string.Empty;
+            // The '@' prefix on the path tells Copilot CLI to load the MCP
+            // config from a file rather than parse the argument as inline
+            // JSON. Copilot's own docs are quiet on this sigil; keep this
+            // comment if a future CLI upgrade changes the convention.
+            string mcpConfigArg = string.IsNullOrEmpty(safeMcpConfig)
+                ? string.Empty
+                : $" --additional-mcp-config '@{safeMcpConfig}'";
+
+            // Copilot CLI picks up custom instructions via COPILOT_CUSTOM_INSTRUCTIONS_DIRS.
+            // For MCP, pass the generated config explicitly because `--config-dir`/COPILOT_HOME
+            // did not reliably surface the clarion-assistant server in practice.
+            //
+            // Note on the `--add-dir` below: Copilot's CWD already covers workDir
+            // via the preceding `cd`, but `--add-dir` additionally puts the path
+            // on Copilot's allowed-paths list for cross-directory tool operations.
+            // The two are intentionally both set, not redundant.
+            string cmd =
+                $"cd '{ctx.SafeWorkDir}'; " +
+                "$env:CLARION_ASSISTANT_EMBEDDED='1'; " +
+                $"$env:COPILOT_HOME='{safeCopilotHome}'; " +
+                (string.IsNullOrEmpty(safeInstrDir) ? "" : $"$env:COPILOT_CUSTOM_INSTRUCTIONS_DIRS='{safeInstrDir}'; ") +
+                copilotBase +
+                $" --config-dir '{safeCopilotHome}'" +
+                mcpConfigArg +
+                $" --add-dir '{ctx.SafeWorkDir}'" +
+                modelFlag +
+                permissionFlags +
+                extraFlags;
+
+            System.Diagnostics.Debug.WriteLine("[LaunchCopilot] mcpConfig=" + (mcpConfig ?? "(none)") + ", home=" + copilotHome);
+            return new BuiltBackendCommand { Cmd = cmd };
         }
 
         private void OnTabRendererDataReceived(TerminalTab tab, byte[] data)
