@@ -65,22 +65,36 @@ namespace ClarionAssistant.Services
 
         /// <summary>
         /// Rebuilds the FTS index from doc_chunks. Call after ingestion completes.
-        /// Clears and repopulates the standalone FTS5 table.
+        /// Drops and recreates the standalone FTS5 table — survives a corrupt
+        /// FTS shadow index (which would cause MATCH to report the misleading
+        /// "database disk image is malformed"). Returns the number of chunks
+        /// indexed.
         /// </summary>
-        public void RebuildFtsIndex()
+        public int RebuildFtsIndex()
         {
             using (var conn = OpenConnection(readOnly: false))
             {
-                // Clear existing FTS data
-                using (var cmd = new SQLiteCommand("DELETE FROM doc_fts", conn))
+                using (var cmd = new SQLiteCommand("DROP TABLE IF EXISTS doc_fts", conn))
                     cmd.ExecuteNonQuery();
 
-                // Repopulate from doc_chunks
+                using (var cmd = new SQLiteCommand(@"
+                    CREATE VIRTUAL TABLE doc_fts USING fts5(
+                        chunk_id,
+                        class_name,
+                        method_name,
+                        heading,
+                        content,
+                        code_example,
+                        signature,
+                        tokenize='porter unicode61'
+                    )", conn))
+                    cmd.ExecuteNonQuery();
+
                 using (var cmd = new SQLiteCommand(@"
                     INSERT INTO doc_fts(chunk_id, class_name, method_name, heading, content, code_example, signature)
                     SELECT CAST(id AS TEXT), class_name, method_name, heading, content, code_example, signature
                     FROM doc_chunks", conn))
-                    cmd.ExecuteNonQuery();
+                    return cmd.ExecuteNonQuery();
             }
         }
 
