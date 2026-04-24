@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/peterparker57/ClarionAssistant/releases/latest"><img src="https://img.shields.io/github/v/release/peterparker57/ClarionAssistant?include_prereleases&label=download&style=for-the-badge" alt="Download"></a>
   <img src="https://img.shields.io/badge/Clarion-10%20%7C%2011%20%7C%2012-blue?style=for-the-badge" alt="Clarion 10 | 11 | 12">
-  <img src="https://img.shields.io/badge/version-4.2-green?style=for-the-badge" alt="v4.2">
+  <img src="https://img.shields.io/badge/version-4.3-green?style=for-the-badge" alt="v4.3">
 </p>
 
 ---
@@ -39,6 +39,39 @@ Ask it to write Clarion code, explain procedures, refactor classes, build COM co
 - **Diff viewer** &mdash; Monaco-based side-by-side diffs with syntax highlighting
 - **Knowledge system** &mdash; persistent cross-session memory for decisions, patterns, and gotchas
 - **Zoom persistence** &mdash; Ctrl+mousewheel zoom is saved and restored across sessions
+
+---
+
+## What's New in v4.3
+
+### Backend selection UX
+- **Dashboard backend dropdown** &mdash; pick Claude Code or Copilot per click; overrides the saved default without rewriting it. "Reset to default" link appears whenever the dropdown differs from the saved default.
+- **Per-card backend badges** on the quick-action cards (CLAUDE CODE / COPILOT) update live with the dropdown so you can see at a glance which backend each click will launch.
+- **Tab-strip labels show the backend** &mdash; new tabs read "Terminal 1 CC" (Claude Code), "Terminal 2 CP" (Copilot), or "CO" (Codex placeholder, reserved for future). Custom-named tabs get the same suffix: "MyProject CC".
+
+### Settings dialog redesign
+- **Launch page is now first in the sidebar** and uses per-backend tabs (Launch / Models) under a dropdown
+- **"Set as Default" button** replaces the implicit "saved when you change the dropdown" behavior &mdash; now you can inspect any backend's settings without accidentally changing the default
+- **Working Directory and Projects Directory are per-backend** &mdash; live on the Models tab; each backend remembers its own paths
+- **General page removed** &mdash; its global fields moved: Working Directory to Launch (Models tab, per backend), COM Projects Folder to Classes
+
+### Unified assistant instructions
+- **Copilot sessions now get the full 220-line Clarion IDE prompt** previously only Claude received. Both backends share a single authoritative `clarion-assistant-prompt.md`, deployed as `AGENTS.md` for Copilot.
+
+### Security hardening
+- **MCP HTTP server requires a per-session bearer token** &mdash; generated fresh each addin start and embedded in the MCP config file each CLI client reads. Drive-by browser fetches to `localhost:19372` no longer reach the tools surface.
+- **CORS permissiveness removed** &mdash; `Access-Control-Allow-Origin: *` is gone; browser drive-by can't read responses.
+- **Host and Origin header validation** blocks DNS-rebinding attacks and cross-origin browser requests.
+- **pwsh launch payload now tokenizes and quotes user settings** &mdash; `Copilot.ExtraFlags`, Claude/Copilot command entries, and Copilot.Model go through a new `PwshCommandQuoter` helper. A crafted settings value can no longer chain arbitrary PowerShell commands.
+- **Settings file newline rejection** &mdash; `SettingsService.Set` now throws on CR/LF in values (previously a `\n` could smuggle a second key on reload, e.g. stealth-enabling `Copilot.PermissionMode=allow`).
+
+### Reliability
+- **DocGraph FTS5 load fixed** &mdash; `query_docs` no longer intermittently returns "database disk image is malformed" on valid data. The extension is now loaded from an absolute path (no more `LoadLibrary` search-order roulette), and a smoke probe at first use surfaces a clear diagnostic error if the FTS5 module fails to register.
+- **New `rebuild_docgraph_fts` MCP tool** &mdash; in-place recovery if someone lands on a corrupted FTS shadow index. Drops and recreates the FTS table from the intact `doc_chunks` content.
+
+### Internals (visible in debug logs)
+- **Renamed `ClaudeChatControl` &rarr; `AssistantChatControl`** to reflect its dual-backend role
+- **Shared launch scaffolding** &mdash; `LaunchClaudeForTab` and `LaunchCopilotForTab` now share `PrepareBackendLaunch`, `StartTabTerminal`, `AbortLaunch` helpers so adding a 3rd backend (Codex etc.) is a matter of writing one command-body builder, not re-copying ~60 lines of scaffolding
 
 ---
 
