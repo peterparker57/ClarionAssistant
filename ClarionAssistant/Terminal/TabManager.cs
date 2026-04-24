@@ -118,6 +118,16 @@ namespace ClarionAssistant.Terminal
             return tab;
         }
 
+        /// <summary>Rename a tab and repaint the tab strip so the new text
+        /// shows immediately. No-op if tab is null or newName matches.</summary>
+        public void RenameTab(TerminalTab tab, string newName)
+        {
+            if (tab == null || string.IsNullOrEmpty(newName)) return;
+            if (string.Equals(tab.Name, newName, StringComparison.Ordinal)) return;
+            tab.Name = newName;
+            _tabStrip.Invalidate();
+        }
+
         /// <summary>Switch to a tab by ID.</summary>
         public void ActivateTab(string tabId)
         {

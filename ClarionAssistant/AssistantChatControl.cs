@@ -2395,10 +2395,45 @@ namespace ClarionAssistant
             string backend = tab.RequestedBackend
                 ?? _settings.Get("Assistant.Backend")
                 ?? "Claude";
+
+            // Annotate the tab with the backend abbreviation so the tab strip
+            // makes it obvious at a glance which assistant is driving each tab.
+            // Idempotent: strips any prior suffix before appending.
+            _tabManager.RenameTab(tab, ApplyBackendSuffix(tab.Name, backend));
+
             if (string.Equals(backend, "Copilot", StringComparison.OrdinalIgnoreCase))
                 LaunchCopilotForTab(tab);
             else
                 LaunchClaudeForTab(tab);
+        }
+
+        /// <summary>Short backend abbreviation for tab labels.</summary>
+        private static string BackendSuffix(string backend)
+        {
+            if (string.Equals(backend, "Claude",  StringComparison.OrdinalIgnoreCase)) return "CC";
+            if (string.Equals(backend, "Copilot", StringComparison.OrdinalIgnoreCase)) return "CP";
+            if (string.Equals(backend, "Codex",   StringComparison.OrdinalIgnoreCase)) return "CO";
+            return "";
+        }
+
+        /// <summary>Append the backend's 2-letter suffix to the tab name, stripping
+        /// any prior known suffix first so relaunches don't stack "CC CP CC".</summary>
+        private static string ApplyBackendSuffix(string currentName, string backend)
+        {
+            string suffix = BackendSuffix(backend);
+            if (string.IsNullOrEmpty(suffix) || string.IsNullOrEmpty(currentName))
+                return currentName;
+
+            string stripped = currentName;
+            foreach (string prior in new[] { " CC", " CP", " CO" })
+            {
+                if (stripped.EndsWith(prior, StringComparison.Ordinal))
+                {
+                    stripped = stripped.Substring(0, stripped.Length - prior.Length);
+                    break;
+                }
+            }
+            return stripped + " " + suffix;
         }
 
         private void LaunchClaudeForTab(TerminalTab tab)
