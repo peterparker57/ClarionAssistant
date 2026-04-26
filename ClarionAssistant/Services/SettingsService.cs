@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Reflection;
 using System.Text;
 
 namespace ClarionAssistant.Services
@@ -202,5 +203,48 @@ namespace ClarionAssistant.Services
                 if (kv.Value) return kv.Key;
             return commands.Count > 0 ? commands[0].Key : "copilot";
         }
+
+        // ── Backend model registry ───────────────────────────────
+
+        /// <summary>
+        /// Returns the backend model registry as a raw JSON string. The webview
+        /// parses it directly to populate Plan and Model dropdowns. Three-tier
+        /// loader: deployed file (user-editable), embedded resource (shipped
+        /// with the assembly), then a minimal hardcoded fallback so the
+        /// settings dialog can still open if both fail.
+        /// </summary>
+        public string GetModelRegistryJson()
+        {
+            try
+            {
+                string asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+                string path = Path.Combine(asmDir, "Terminal", "models.json");
+                if (File.Exists(path)) return File.ReadAllText(path);
+            }
+            catch { }
+
+            try
+            {
+                using (Stream s = Assembly.GetExecutingAssembly()
+                    .GetManifestResourceStream("ClarionAssistant.Terminal.models.json"))
+                {
+                    if (s != null)
+                        using (var reader = new StreamReader(s))
+                            return reader.ReadToEnd();
+                }
+            }
+            catch { }
+
+            return MinimalRegistryJson;
+        }
+
+        // Minimal registry used only when both the deployed file and the embedded
+        // resource are unavailable — keeps the settings dialog functional.
+        private const string MinimalRegistryJson =
+            "{\"version\":\"1\",\"backends\":{" +
+            "\"Claude\":{\"plans\":[{\"id\":\"Pro\",\"label\":\"Pro\"}],\"defaultPlan\":\"Pro\",\"models\":[{\"id\":\"sonnet\",\"label\":\"Sonnet\",\"plans\":[\"Pro\"]}]}," +
+            "\"Copilot\":{\"plans\":[{\"id\":\"Pro\",\"label\":\"Pro\"}],\"defaultPlan\":\"Pro\",\"models\":[{\"id\":\"\",\"label\":\"(default)\",\"plans\":[\"Pro\"]}]}," +
+            "\"Codex\":{\"plans\":[{\"id\":\"Plus\",\"label\":\"ChatGPT Plus\"}],\"defaultPlan\":\"Plus\",\"models\":[{\"id\":\"\",\"label\":\"Auto\",\"plans\":[\"Plus\"]}]}" +
+            "}}";
     }
 }

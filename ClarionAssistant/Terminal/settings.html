@@ -283,10 +283,11 @@
 
   /* Backend selector bar (Launch page) */
   .backend-bar {
-    display: flex; align-items: center; gap: 14px;
+    display: flex; flex-direction: column; gap: 8px;
     padding: 12px 14px; margin-bottom: 14px;
     background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 8px;
   }
+  .backend-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
   .backend-bar .bar-label { font-size: 12px; color: var(--section-fg); font-weight: 500; }
   .backend-bar .default-label { font-size: 12px; color: var(--section-fg); }
   .backend-bar .default-label span { color: var(--success); font-weight: 600; }
@@ -431,13 +432,20 @@
 
       <!-- Backend selector bar -->
       <div class="backend-bar">
-        <span class="bar-label">Backend:</span>
-        <select id="assistantBackend" onchange="onBackendChanged()" style="width:200px">
-          <option value="Claude">Claude Code</option>
-          <option value="Copilot">Copilot</option>
-        </select>
-        <button class="btn btn-sm" id="setDefaultBtn" onclick="setAsDefault()">Set as Default</button>
-        <span class="default-label">Default: <span id="defaultBackendLabel">Claude Code</span></span>
+        <div class="backend-row">
+          <span class="bar-label">Backend:</span>
+          <select id="assistantBackend" onchange="onBackendChanged()" style="width:160px">
+            <option value="Claude">Claude Code</option>
+            <option value="Copilot">Copilot</option>
+            <option value="Codex">Codex</option>
+          </select>
+          <span class="bar-label">Plan:</span>
+          <select id="assistantPlan" onchange="onPlanChanged()" style="width:160px"></select>
+        </div>
+        <div class="backend-row">
+          <button class="btn btn-sm" id="setDefaultBtn" onclick="setAsDefault()">Set as Default</button>
+          <span class="default-label">Default: <span id="defaultBackendLabel">Claude Code</span></span>
+        </div>
       </div>
 
       <!-- Tab strip -->
@@ -521,39 +529,14 @@
           <div class="field-desc">Default directory for Clarion COM / Addin projects created via this backend.</div>
         </div>
 
-        <div class="field" id="claudeModelField">
-          <div class="field-label">Claude Model</div>
-          <select id="model">
-            <option value="sonnet">Sonnet</option>
-            <option value="opus">Opus</option>
-            <option value="haiku">Haiku</option>
-          </select>
-          <div class="field-desc">Model used for new Claude sessions.</div>
-        </div>
-
-        <div class="field" id="copilotModelField" style="display:none">
-          <div class="field-label">Copilot Model</div>
-          <select id="copilotModel">
-            <option value="">(default)</option>
-            <optgroup label="GPT">
-              <option value="gpt-5.4">GPT-5.4</option>
-              <option value="gpt-5.4-mini">GPT-5.4 mini</option>
-              <option value="gpt-5.3-codex">GPT-5.3 Codex</option>
-              <option value="gpt-5.2-codex">GPT-5.2 Codex</option>
-              <option value="gpt-5.2">GPT-5.2</option>
-              <option value="gpt-5-mini">GPT-5 mini</option>
-              <option value="gpt-4.1">GPT-4.1</option>
-            </optgroup>
-            <optgroup label="Claude">
-              <option value="claude-sonnet-4.6">Claude Sonnet 4.6</option>
-              <option value="claude-sonnet-4.5">Claude Sonnet 4.5</option>
-              <option value="claude-haiku-4.5">Claude Haiku 4.5</option>
-              <option value="claude-opus-4.6">Claude Opus 4.6</option>
-              <option value="claude-opus-4.5">Claude Opus 4.5</option>
-              <option value="claude-sonnet-4">Claude Sonnet 4</option>
-            </optgroup>
-          </select>
-          <div class="field-desc">Model passed via <code>--model</code> to Copilot CLI.</div>
+        <div class="field" id="modelField">
+          <div class="field-label" id="modelFieldLabel">Model</div>
+          <select id="modelSelect" onchange="onModelSelectChanged()" style="min-width:260px"></select>
+          <input type="text" id="modelCustom" oninput="onModelCustomInput()"
+                 style="display:none;margin-top:6px;width:280px"
+                 placeholder="Type custom model id...">
+          <div class="field-desc" id="modelFieldDesc">Model used for new sessions with the selected backend.</div>
+          <div class="field-desc" id="modelMismatchNote" style="display:none;color:var(--warning);margin-top:4px"></div>
         </div>
       </div>
     </div>
@@ -1008,8 +991,16 @@
   // backend's values.
   var _paths = {
     Claude:  { workingDir: '', projectsDir: '' },
-    Copilot: { workingDir: '', projectsDir: '' }
+    Copilot: { workingDir: '', projectsDir: '' },
+    Codex:   { workingDir: '', projectsDir: '' }
   };
+
+  // Backend model registry (loaded from setSettings.modelRegistry). Drives the
+  // Plan dropdown options and Model dropdown contents (filtered by plan).
+  var _registry = null;
+  var _planByBackend  = { Claude: '', Copilot: '', Codex: '' };
+  var _modelByBackend = { Claude: '', Copilot: '', Codex: '' };
+  var _CUSTOM_TOKEN = '__custom__'; // sentinel value for the "Custom..." dropdown entry
   // True between dialog open and the first setSettings message. During that window,
   // capturePathsToViewBackend would overwrite _paths with empty inputs, so we skip it.
   var _initialLoad = true;
@@ -1031,7 +1022,9 @@
   }
 
   function displayBackendName(b) {
-    return b === 'Claude' ? 'Claude Code' : b;
+    if (b === 'Claude') return 'Claude Code';
+    if (b === 'Codex') return 'Codex';
+    return b;
   }
 
   function onBackendChanged() {
@@ -1050,17 +1043,15 @@
 
     populatePathsFromViewBackend();
 
-    // Show the backend-specific Launch-tab blocks
+    // Show the backend-specific Launch-tab blocks (Codex has no special block today)
     var claudeOnly = document.getElementById('claudeOnly');
     var copilotOnly = document.getElementById('copilotOnly');
     if (claudeOnly) claudeOnly.style.display = (_viewBackend === 'Claude') ? 'block' : 'none';
     if (copilotOnly) copilotOnly.style.display = (_viewBackend === 'Copilot') ? 'block' : 'none';
 
-    // Show the backend-specific Models-tab fields
-    var claudeModelField = document.getElementById('claudeModelField');
-    var copilotModelField = document.getElementById('copilotModelField');
-    if (claudeModelField) claudeModelField.style.display = (_viewBackend === 'Claude') ? 'block' : 'none';
-    if (copilotModelField) copilotModelField.style.display = (_viewBackend === 'Copilot') ? 'block' : 'none';
+    // Render Plan + Model dropdowns from the registry for this backend
+    renderPlanOptions(_viewBackend);
+    renderModelOptions(_viewBackend, _planByBackend[_viewBackend]);
 
     var title = document.getElementById('cmdTitle');
     var desc = document.getElementById('cmdDesc');
@@ -1068,10 +1059,146 @@
     if (title) title.textContent = label + ' Commands';
     if (desc) desc.textContent = 'Configure launch commands for ' + label + ' terminal sessions.';
 
-    _commands = (_viewBackend === 'Copilot') ? _copilotCommands : _claudeCommands;
+    _commands = (_viewBackend === 'Copilot') ? _copilotCommands
+              : (_viewBackend === 'Codex')   ? []
+              : _claudeCommands;
     _cmdSelectedIdx = _commands.length > 0 ? 0 : -1;
     renderCommands();
     updateDefaultButton();
+  }
+
+  // ── Plan / Model registry-driven rendering ────────
+
+  function getBackendInfo(backend) {
+    if (!_registry || !_registry.backends) return null;
+    return _registry.backends[backend] || null;
+  }
+
+  function renderPlanOptions(backend) {
+    var sel = document.getElementById('assistantPlan');
+    if (!sel) return;
+    sel.innerHTML = '';
+    var info = getBackendInfo(backend);
+    if (!info) { sel.disabled = true; return; }
+    sel.disabled = false;
+    var plans = info.plans || [];
+    var saved = _planByBackend[backend] || info.defaultPlan || (plans[0] && plans[0].id) || '';
+    // Mismatch recovery: if saved plan isn't in the list, fall back to defaultPlan
+    var savedValid = false;
+    for (var i = 0; i < plans.length; i++) if (plans[i].id === saved) { savedValid = true; break; }
+    if (!savedValid) saved = info.defaultPlan || (plans[0] && plans[0].id) || '';
+    for (var j = 0; j < plans.length; j++) {
+      var opt = document.createElement('option');
+      opt.value = plans[j].id; opt.textContent = plans[j].label;
+      if (plans[j].id === saved) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    _planByBackend[backend] = saved;
+  }
+
+  function renderModelOptions(backend, plan) {
+    var sel = document.getElementById('modelSelect');
+    var custom = document.getElementById('modelCustom');
+    var note = document.getElementById('modelMismatchNote');
+    var label = document.getElementById('modelFieldLabel');
+    if (!sel) return;
+    sel.innerHTML = '';
+    if (label) label.textContent = displayBackendName(backend) + ' Model';
+    var info = getBackendInfo(backend);
+    if (!info) { sel.disabled = true; return; }
+    sel.disabled = false;
+    var allowed = (info.models || []).filter(function(m) {
+      return (m.plans || []).indexOf(plan) >= 0;
+    });
+    var savedModel = _modelByBackend[backend];
+    var savedInList = false;
+    for (var i = 0; i < allowed.length; i++) {
+      var m = allowed[i];
+      var opt = document.createElement('option');
+      opt.value = m.id;
+      // Build a combined "(tag1, tag2, ...)" suffix from static tags plus
+      // plan-conditional flags. Order: static tags first, then billed extra,
+      // then not-recommended.
+      var tags = (m.tags || []).slice();
+      if ((m.billedExtraFor || []).indexOf(plan) >= 0) tags.push('billed extra');
+      if ((m.notRecommendedFor || []).indexOf(plan) >= 0) tags.push('not recommended');
+      opt.textContent = tags.length > 0 ? (m.label + ' (' + tags.join(', ') + ')') : m.label;
+      sel.appendChild(opt);
+      if (m.id === savedModel) savedInList = true;
+    }
+    // "Custom..." trailing entry
+    var customOpt = document.createElement('option');
+    customOpt.value = _CUSTOM_TOKEN; customOpt.textContent = 'Custom...';
+    sel.appendChild(customOpt);
+
+    if (savedInList) {
+      sel.value = savedModel;
+      if (custom) { custom.style.display = 'none'; custom.value = ''; }
+      if (note) note.style.display = 'none';
+    } else if (savedModel && allowed.length > 0) {
+      // Decide: was savedModel a valid id under SOME plan (just not this one)?
+      // If yes → mismatch with current plan → fall back to first allowed + show note.
+      // If no  → user typed a custom value → keep it in the custom input.
+      var anyPlanHasIt = (info.models || []).some(function(m) { return m.id === savedModel; });
+      if (anyPlanHasIt) {
+        var fallback = allowed[0].id;
+        sel.value = fallback;
+        _modelByBackend[backend] = fallback;
+        if (custom) { custom.style.display = 'none'; custom.value = ''; }
+        if (note) {
+          note.textContent = 'Model adjusted to fit your plan.';
+          note.style.display = 'block';
+        }
+      } else {
+        sel.value = _CUSTOM_TOKEN;
+        if (custom) { custom.value = savedModel; custom.style.display = 'inline-block'; }
+        if (note) note.style.display = 'none';
+      }
+    } else if (allowed.length > 0) {
+      // No saved model — use first allowed
+      sel.value = allowed[0].id;
+      _modelByBackend[backend] = allowed[0].id;
+      if (custom) { custom.style.display = 'none'; custom.value = ''; }
+      if (note) note.style.display = 'none';
+    } else {
+      // No allowed models for this plan (shouldn't happen) — only Custom available
+      sel.value = _CUSTOM_TOKEN;
+      if (custom) { custom.value = savedModel || ''; custom.style.display = 'inline-block'; }
+      if (note) note.style.display = 'none';
+    }
+  }
+
+  function onPlanChanged() {
+    var sel = document.getElementById('assistantPlan');
+    if (!sel) return;
+    _planByBackend[_viewBackend] = sel.value;
+    renderModelOptions(_viewBackend, sel.value);
+  }
+
+  function onModelSelectChanged() {
+    var sel = document.getElementById('modelSelect');
+    var custom = document.getElementById('modelCustom');
+    var note = document.getElementById('modelMismatchNote');
+    if (!sel) return;
+    if (note) note.style.display = 'none';
+    if (sel.value === _CUSTOM_TOKEN) {
+      if (custom) {
+        custom.style.display = 'inline-block';
+        // Seed with the current saved model so the user can tweak rather than start blank
+        if (!custom.value) custom.value = _modelByBackend[_viewBackend] || '';
+        custom.focus();
+        _modelByBackend[_viewBackend] = custom.value;
+      }
+    } else {
+      if (custom) { custom.style.display = 'none'; custom.value = ''; }
+      _modelByBackend[_viewBackend] = sel.value;
+    }
+  }
+
+  function onModelCustomInput() {
+    var custom = document.getElementById('modelCustom');
+    if (!custom) return;
+    _modelByBackend[_viewBackend] = custom.value;
   }
 
   function setAsDefault() {
@@ -1307,7 +1434,7 @@
       theme: currentSettings.theme || 'dark',
       fontFamily: document.getElementById('fontFamily').value,
       fontSize: document.getElementById('fontSize').value,
-      model: document.getElementById('model').value,
+      model: _modelByBackend.Claude || 'sonnet',
       claudeWorkingDir:   _paths.Claude.workingDir,
       copilotWorkingDir:  _paths.Copilot.workingDir,
       claudeProjectsDir:  _paths.Claude.projectsDir,
@@ -1320,9 +1447,13 @@
       commands: _claudeCommands,
       claudeCommands: _claudeCommands,
       copilotCommands: _copilotCommands,
-      copilotModel: (document.getElementById('copilotModel') || {}).value || '',
+      copilotModel: _modelByBackend.Copilot || '',
       copilotPermissionMode: (document.getElementById('copilotPermissionMode') || {}).value || 'prompt',
       copilotExtraFlags: (document.getElementById('copilotExtraFlags') || {}).value || '',
+      claudePlan:  _planByBackend.Claude  || '',
+      copilotPlan: _planByBackend.Copilot || '',
+      codexPlan:   _planByBackend.Codex   || '',
+      codexModel:  _modelByBackend.Codex  || '',
       classOutputFolder: document.getElementById('classOutputFolder').value
     };
     send('save', data);
@@ -1357,14 +1488,22 @@
       document.getElementById('fontSize').value = s.fontSize || 14;
       updateFontPreview();
 
-      // Model
-      document.getElementById('model').value = s.model || 'sonnet';
+      // Model registry + per-backend plan/model state (consumed by setViewBackend below)
+      _registry = s.modelRegistry || null;
+      _planByBackend.Claude  = s.claudePlan  || '';
+      _planByBackend.Copilot = s.copilotPlan || '';
+      _planByBackend.Codex   = s.codexPlan   || '';
+      _modelByBackend.Claude  = s.model        || 'sonnet';
+      _modelByBackend.Copilot = s.copilotModel || '';
+      _modelByBackend.Codex   = s.codexModel   || '';
 
       // Per-backend paths
       _paths.Claude.workingDir   = s.claudeWorkingDir   || s.workingDir || '';
       _paths.Copilot.workingDir  = s.copilotWorkingDir  || s.workingDir || '';
+      _paths.Codex.workingDir    = s.codexWorkingDir    || s.workingDir || '';
       _paths.Claude.projectsDir  = s.claudeProjectsDir  || s.comFolder  || '';
       _paths.Copilot.projectsDir = s.copilotProjectsDir || s.comFolder  || '';
+      _paths.Codex.projectsDir   = s.codexProjectsDir   || s.comFolder  || '';
 
       // MultiTerminal
       document.getElementById('mtEnabled').checked = !!s.mtEnabled;
@@ -1388,8 +1527,6 @@
       // Backend + commands
       _claudeCommands = s.claudeCommands || s.commands || [];
       _copilotCommands = s.copilotCommands || [];
-      if (document.getElementById('copilotModel'))
-        document.getElementById('copilotModel').value = s.copilotModel || '';
       if (document.getElementById('copilotPermissionMode'))
         document.getElementById('copilotPermissionMode').value = s.copilotPermissionMode || 'prompt';
       if (document.getElementById('copilotExtraFlags'))

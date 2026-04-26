@@ -2650,6 +2650,15 @@ namespace ClarionAssistant
             }
 
             string colorfgbg = _isDarkTheme ? "$env:COLORFGBG='15;0'" : "$env:COLORFGBG='0;15'";
+
+            // Pass the user's selected model via --model. Empty value means "no
+            // override" — the CLI will use the account's default (Sonnet 4.6 on
+            // Pro, Opus 4.7 on Max). Single-quote any apostrophes for safety.
+            string claudeModelVal = (_settings.Get("Claude.Model") ?? "").Trim();
+            string claudeModelFlag = string.IsNullOrEmpty(claudeModelVal)
+                ? string.Empty
+                : $" --model '{claudeModelVal.Replace("'", "''")}'";
+
             // Build the base invocation from the user-selected Claude command.
             // For bare "claude", resolve to the full path; for anything else,
             // tokenize and quote so shell metacharacters in settings can't
@@ -2710,7 +2719,7 @@ namespace ClarionAssistant
                 updatePrefix = $"Write-Host 'Checking for Claude Code updates...' -ForegroundColor Cyan; {updateCmd} update; ";
             }
 
-            string claudeCmd = $"cd '{ctx.SafeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {channelEnv}; {colorfgbg}; {updatePrefix}{claudeBase}{mcpArg}{pluginArg} --strict-mcp-config{channelFlag} --allowedTools '{allowedTools}'{extraFlags}";
+            string claudeCmd = $"cd '{ctx.SafeWorkDir}'; $env:CLARION_ASSISTANT_EMBEDDED='1'; {tabEnv}; {channelEnv}; {colorfgbg}; {updatePrefix}{claudeBase}{mcpArg}{pluginArg}{claudeModelFlag} --strict-mcp-config{channelFlag} --allowedTools '{allowedTools}'{extraFlags}";
 
             if (initialPromptFile != null)
             {
@@ -2793,6 +2802,10 @@ namespace ClarionAssistant
                 ? string.Empty
                 : $" --model '{copilotModelVal.Replace("'", "''")}'";
 
+            // Codex backend uses the same --model flag pattern; helper is defined
+            // below for the future Codex launcher (not yet wired). Empty value or
+            // "Auto" means: let the CLI pick.
+
             string permissionMode = (_settings.Get("Copilot.PermissionMode") ?? "prompt").Trim();
             string permissionFlags = string.Equals(permissionMode, "allow", StringComparison.OrdinalIgnoreCase)
                 ? " --allow-all-tools"
@@ -2828,6 +2841,21 @@ namespace ClarionAssistant
 
             System.Diagnostics.Debug.WriteLine("[LaunchCopilot] mcpConfig=" + (mcpConfig ?? "(none)") + ", home=" + copilotHome);
             return new BuiltBackendCommand { Cmd = cmd };
+        }
+
+        // Build the --model flag for the Codex CLI. Mirrors the Copilot pattern at
+        // the LaunchCopilot --model line above. Today no caller exists (Codex backend
+        // is a stub); when the launcher is added, read settings via _settings.Get and
+        // pass to this helper.
+        //
+        // Empty string and the literal "Auto" both mean "let the CLI choose" → no flag.
+        private static string BuildCodexModelFlag(string codexModelVal)
+        {
+            string val = (codexModelVal ?? "").Trim();
+            if (string.IsNullOrEmpty(val) ||
+                string.Equals(val, "Auto", StringComparison.OrdinalIgnoreCase))
+                return string.Empty;
+            return $" --model '{val.Replace("'", "''")}'";
         }
 
         private void OnTabRendererDataReceived(TerminalTab tab, byte[] data)

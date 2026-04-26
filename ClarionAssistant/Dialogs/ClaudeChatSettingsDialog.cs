@@ -270,6 +270,14 @@ namespace ClarionAssistant.Dialogs
             string copilotPermMode = _settings.Get("Copilot.PermissionMode") ?? "prompt";
             string copilotExtraFlags = _settings.Get("Copilot.ExtraFlags") ?? "";
 
+            // Plan selections per backend (defaults applied JS-side from registry)
+            string claudePlan  = _settings.Get("Claude.Plan")  ?? "";
+            string copilotPlan = _settings.Get("Copilot.Plan") ?? "";
+            string codexPlan   = _settings.Get("Codex.Plan")   ?? "";
+            string codexModel  = _settings.Get("Codex.Model")  ?? "";
+
+            string modelRegistryJson = _settings.GetModelRegistryJson();
+
             var ver = Assembly.GetExecutingAssembly().GetName().Version;
             string displayVersion = ver.Major + "." + ver.Minor;
 
@@ -296,6 +304,11 @@ namespace ClarionAssistant.Dialogs
                 + ",\"copilotModel\":\"" + EscapeJson(copilotModel) + "\""
                 + ",\"copilotPermissionMode\":\"" + EscapeJson(copilotPermMode) + "\""
                 + ",\"copilotExtraFlags\":\"" + EscapeJson(copilotExtraFlags) + "\""
+                + ",\"claudePlan\":\""  + EscapeJson(claudePlan)  + "\""
+                + ",\"copilotPlan\":\"" + EscapeJson(copilotPlan) + "\""
+                + ",\"codexPlan\":\""   + EscapeJson(codexPlan)   + "\""
+                + ",\"codexModel\":\""  + EscapeJson(codexModel)  + "\""
+                + ",\"modelRegistry\":" + modelRegistryJson
                 + ",\"classOutputFolder\":\"" + EscapeJson(_settings.Get("Class.OutputFolder") ?? "") + "\""
                 + ",\"classModels\":" + BuildClassModelsJson()
                 + "}}";
@@ -558,6 +571,16 @@ namespace ClarionAssistant.Dialogs
             _settings.Set("Copilot.Model", copilotModel);
             _settings.Set("Copilot.PermissionMode", copilotPermMode);
             _settings.Set("Copilot.ExtraFlags", copilotExtraFlags);
+
+            // Plans + Codex model (subscription tiers; filters available models in the dialog)
+            string claudePlan  = ExtractJsonValue(data, "claudePlan")  ?? (_settings.Get("Claude.Plan")  ?? "");
+            string copilotPlan = ExtractJsonValue(data, "copilotPlan") ?? (_settings.Get("Copilot.Plan") ?? "");
+            string codexPlan   = ExtractJsonValue(data, "codexPlan")   ?? (_settings.Get("Codex.Plan")   ?? "");
+            string codexModel  = ExtractJsonValue(data, "codexModel")  ?? (_settings.Get("Codex.Model")  ?? "");
+            _settings.Set("Claude.Plan",  claudePlan);
+            _settings.Set("Copilot.Plan", copilotPlan);
+            _settings.Set("Codex.Plan",   codexPlan);
+            _settings.Set("Codex.Model",  codexModel);
 
             // Class output folder
             string classOutputFolder = ExtractJsonValue(data, "classOutputFolder") ?? "";

@@ -1,0 +1,63 @@
+{
+  "version": "1",
+  "lastVerified": "2026-04-26",
+  "backends": {
+    "Claude": {
+      "plans": [
+        { "id": "Pro",    "label": "Pro" },
+        { "id": "Max5x",  "label": "Max 5x" },
+        { "id": "Max20x", "label": "Max 20x" }
+      ],
+      "defaultPlan": "Pro",
+      "models": [
+        { "id": "default",    "label": "Default (recommended)", "plans": ["Pro", "Max5x", "Max20x"] },
+        { "id": "haiku",      "label": "Haiku 4.5",  "plans": ["Pro", "Max5x", "Max20x"] },
+        { "id": "sonnet",     "label": "Sonnet 4.6", "plans": ["Pro", "Max5x", "Max20x"] },
+        { "id": "sonnet[1m]", "label": "Sonnet 4.6", "tags": ["1M context"], "plans": ["Pro", "Max5x", "Max20x"], "billedExtraFor": ["Pro", "Max5x", "Max20x"] },
+        { "id": "opus",       "label": "Opus 4.7",   "plans": ["Pro", "Max5x", "Max20x"], "notRecommendedFor": ["Pro"] },
+        { "id": "opus[1m]",   "label": "Opus 4.7",   "tags": ["1M context"], "plans": ["Pro", "Max5x", "Max20x"], "billedExtraFor": ["Pro"], "notRecommendedFor": ["Pro"] }
+      ]
+    },
+    "Copilot": {
+      "plans": [
+        { "id": "Free",       "label": "Free" },
+        { "id": "Pro",        "label": "Pro" },
+        { "id": "ProPlus",    "label": "Pro+" },
+        { "id": "Business",   "label": "Business" },
+        { "id": "Enterprise", "label": "Enterprise" }
+      ],
+      "defaultPlan": "Pro",
+      "models": [
+        { "id": "",                  "label": "Default (recommended)", "group": "Default", "plans": ["Free", "Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-haiku-4.5",  "label": "Claude Haiku 4.5",  "group": "Claude", "plans": ["Free", "Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-sonnet-4",   "label": "Claude Sonnet 4",   "group": "Claude", "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-sonnet-4.5", "label": "Claude Sonnet 4.5", "group": "Claude", "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-sonnet-4.6", "label": "Claude Sonnet 4.6", "group": "Claude", "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-opus-4.7",   "label": "Claude Opus 4.7",   "group": "Claude", "plans": ["ProPlus", "Business", "Enterprise"] },
+        { "id": "claude-opus-4.6",   "label": "Claude Opus 4.6",   "group": "Claude", "plans": ["Business", "Enterprise"] },
+        { "id": "claude-opus-4.5",   "label": "Claude Opus 4.5",   "group": "Claude", "plans": ["Business", "Enterprise"] },
+        { "id": "gpt-5.4",           "label": "GPT-5.4",           "group": "GPT",    "plans": ["ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-5.4-mini",      "label": "GPT-5.4 mini",      "group": "GPT",    "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-5.3-codex",     "label": "GPT-5.3 Codex",     "group": "GPT",    "plans": ["ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-5.2-codex",     "label": "GPT-5.2 Codex",     "group": "GPT",    "plans": ["ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-5.2",           "label": "GPT-5.2",           "group": "GPT",    "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-5-mini",        "label": "GPT-5 mini",        "group": "GPT",    "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "gpt-4.1",           "label": "GPT-4.1",           "group": "GPT",    "plans": ["Pro", "ProPlus", "Business", "Enterprise"] },
+        { "id": "gemini-2.5-pro",    "label": "Gemini 2.5 Pro",    "group": "Gemini", "plans": ["Pro", "ProPlus", "Business", "Enterprise"] }
+      ]
+    },
+    "Codex": {
+      "plans": [
+        { "id": "Plus",       "label": "ChatGPT Plus" },
+        { "id": "Pro",        "label": "ChatGPT Pro" },
+        { "id": "Business",   "label": "ChatGPT Business" },
+        { "id": "Edu",        "label": "ChatGPT Edu" },
+        { "id": "Enterprise", "label": "ChatGPT Enterprise" }
+      ],
+      "defaultPlan": "Plus",
+      "models": [
+        { "id": "", "label": "Default (recommended)", "plans": ["Plus", "Pro", "Business", "Edu", "Enterprise"] }
+      ]
+    }
+  }
+}
