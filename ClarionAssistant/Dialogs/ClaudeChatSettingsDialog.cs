@@ -15,6 +15,7 @@ namespace ClarionAssistant.Dialogs
     public class ClaudeChatSettingsDialog : Form
     {
         private readonly SettingsService _settings;
+        private readonly McpServer _mcpServer;
         private readonly bool _isDark;
 
         private WebView2 _webView;
@@ -33,8 +34,17 @@ namespace ClarionAssistant.Dialogs
         public event Action<ClaudeChatSettingsDialog> SettingsSaved;
 
         public ClaudeChatSettingsDialog(SettingsService settings, bool isDarkTheme = true)
+            : this(settings, null, isDarkTheme) { }
+
+        /// <summary>
+        /// Construct the settings dialog. <paramref name="mcpServer"/> is optional;
+        /// when supplied, the External MCP Clients panel can display the live
+        /// endpoint URL (port is dynamically chosen at server start).
+        /// </summary>
+        public ClaudeChatSettingsDialog(SettingsService settings, McpServer mcpServer, bool isDarkTheme = true)
         {
             _settings = settings;
+            _mcpServer = mcpServer;
             _isDark = isDarkTheme;
             IsDarkTheme = isDarkTheme;
 
@@ -197,6 +207,12 @@ namespace ClarionAssistant.Dialogs
                         if (!string.IsNullOrEmpty(url))
                             System.Diagnostics.Process.Start(url);
                         break;
+                    case "generateMcpExternalToken":
+                        HandleGenerateMcpExternalToken();
+                        break;
+                    case "addToClaudeDesktop":
+                        HandleAddToClaudeDesktop();
+                        break;
                 }
             }
             catch (Exception ex)
@@ -290,6 +306,11 @@ namespace ClarionAssistant.Dialogs
             string codexModel  = _settings.Get("Codex.Model")  ?? "";
             string codexEffort = _settings.Get("Codex.Effort") ?? "";
 
+            // External MCP client access (issue #24)
+            bool mcpExternalEnabled = _settings.GetMcpExternalAccessEnabled();
+            string mcpExternalToken = _settings.GetMcpExternalToken();
+            int mcpPort = (_mcpServer != null && _mcpServer.IsRunning) ? _mcpServer.Port : 0;
+
             string modelRegistryJson = _settings.GetModelRegistryJson();
 
             var ver = Assembly.GetExecutingAssembly().GetName().Version;
@@ -322,6 +343,9 @@ namespace ClarionAssistant.Dialogs
                 + ",\"copilotPermissionMode\":\"" + EscapeJson(copilotPermMode) + "\""
                 + ",\"copilotExtraFlags\":\"" + EscapeJson(copilotExtraFlags) + "\""
                 + ",\"codexEffort\":\"" + EscapeJson(codexEffort) + "\""
+                + ",\"mcpExternalEnabled\":" + (mcpExternalEnabled ? "true" : "false")
+                + ",\"mcpExternalToken\":\"" + EscapeJson(mcpExternalToken) + "\""
+                + ",\"mcpPort\":" + mcpPort
                 + ",\"claudePlan\":\""  + EscapeJson(claudePlan)  + "\""
                 + ",\"copilotPlan\":\"" + EscapeJson(copilotPlan) + "\""
                 + ",\"codexPlan\":\""   + EscapeJson(codexPlan)   + "\""
@@ -544,6 +568,30 @@ namespace ClarionAssistant.Dialogs
 
         private void HandleSave(string json)
         {
+            try
+            {
+                HandleSaveInner(json);
+            }
+            catch (SettingsLockedException ex)
+            {
+                // Cross-process contention: another ClarionAssistant process is
+                // mid-save and didn't release the named mutex within our budget.
+                // Surface this so the user can retry rather than have the dialog
+                // freeze with a half-persisted batch. (Codex Run 5 + Debugger
+                // Run 5 — HIGH: HandleSave previously swallowed this in the
+                // outer catch-all, leaving partial save + no UI feedback.)
+                try
+                {
+                    MessageBox.Show(this, ex.Message, "Settings Locked",
+                        MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+                catch { }
+                // Do NOT close the dialog — let the user retry.
+            }
+        }
+
+        private void HandleSaveInner(string json)
+        {
             // Extract nested data object values
             string data = ExtractJsonObject(json, "data");
             if (data == null) data = json;
@@ -608,6 +656,17 @@ namespace ClarionAssistant.Dialogs
             _settings.Set("Codex.Plan",   codexPlan);
             _settings.Set("Codex.Model",  codexModel);
             _settings.Set("Codex.Effort", codexEffort);
+
+            // External MCP client access (issue #24).
+            // Only the toggle is persisted here. The token is persisted by
+            // HandleGenerateMcpExternalToken at click time so the snippet the
+            // user copies is immediately the live token (lets them paste +
+            // test before clicking Save). Re-writing it here would be a
+            // round-trip no-op at best and could clobber a token minted in
+            // another window if two dialogs were ever open at once.
+            string mcpExternalEnabledStr = ExtractJsonValue(data, "mcpExternalEnabled") ?? "false";
+            bool mcpExternalEnabled = string.Equals(mcpExternalEnabledStr, "true", StringComparison.OrdinalIgnoreCase);
+            _settings.SetMcpExternalAccessEnabled(mcpExternalEnabled);
 
             // Class output folder
             string classOutputFolder = ExtractJsonValue(data, "classOutputFolder") ?? "";
@@ -717,6 +776,259 @@ namespace ClarionAssistant.Dialogs
                     string msg = "{\"type\":\"browseResult\",\"target\":\"docPath\",\"path\":\"" + EscapeJson(dlg.FileName) + "\"}";
                     _webView.CoreWebView2.PostWebMessageAsString(msg);
                 }
+            }
+        }
+
+        /// <summary>
+        /// One-click integration: write CA's MCP server entry into Claude Desktop's
+        /// config (<c>%APPDATA%\Claude\claude_desktop_config.json</c>) and back up
+        /// the original. Idempotent — repeated clicks update the entry in place
+        /// (e.g. after rotating the token). Avoids the manual copy-paste-into-JSON
+        /// step the snippet textarea otherwise requires.
+        /// </summary>
+        private void HandleAddToClaudeDesktop()
+        {
+            try
+            {
+                if (!_settings.GetMcpExternalAccessEnabled())
+                {
+                    PostClaudeDesktopStatus(false, "Enable external MCP access first.");
+                    return;
+                }
+                string token = _settings.GetMcpExternalToken();
+                if (string.IsNullOrEmpty(token))
+                {
+                    PostClaudeDesktopStatus(false, "Generate a token first.");
+                    return;
+                }
+                if (_mcpServer == null || !_mcpServer.IsRunning)
+                {
+                    PostClaudeDesktopStatus(false, "MCP server is not running.");
+                    return;
+                }
+
+                // Resolve mcp-remote (npm global install per CodexProcessManager pattern).
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string mcpRemoteJs = Path.Combine(appData, "npm", "node_modules", "mcp-remote", "dist", "proxy.js");
+                if (!File.Exists(mcpRemoteJs))
+                {
+                    PostClaudeDesktopStatus(false,
+                        "mcp-remote not installed. Run: npm install -g mcp-remote@" +
+                        Services.CodexProcessManager.McpRemoteVersion);
+                    return;
+                }
+
+                // Resolve node.exe — Claude Desktop wraps `npx` in cmd /C which breaks
+                // on the space in `C:\Program Files\nodejs\npx.cmd`. Calling node.exe
+                // directly with the proxy.js path matches the project's other MCP
+                // server entries and avoids the cmd-quoting issue.
+                string nodeExe = ResolveNodeExeForClaudeDesktop();
+                if (nodeExe == null)
+                {
+                    PostClaudeDesktopStatus(false, "node.exe not found. Install Node.js first.");
+                    return;
+                }
+
+                string configDir = Path.Combine(appData, "Claude");
+                string configPath = Path.Combine(configDir, "claude_desktop_config.json");
+                if (!Directory.Exists(configDir))
+                {
+                    PostClaudeDesktopStatus(false,
+                        "Claude Desktop directory not found at " + configDir + ". Install Claude Desktop first.");
+                    return;
+                }
+
+                string original = File.Exists(configPath) ? File.ReadAllText(configPath) : "{}";
+
+                // Backup once on first mutation. Subsequent clicks reuse the same
+                // backup (rotating tokens shouldn't keep replacing the .bak with
+                // already-modified state).
+                if (File.Exists(configPath))
+                {
+                    string bak = configPath + ".clarionassistant.bak";
+                    if (!File.Exists(bak))
+                    {
+                        try { File.Copy(configPath, bak, overwrite: false); }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine("[SettingsDialog] Claude Desktop config backup failed: " + ex.Message);
+                        }
+                    }
+                }
+
+                var serializer = new System.Web.Script.Serialization.JavaScriptSerializer { MaxJsonLength = int.MaxValue };
+                Dictionary<string, object> root;
+                try { root = serializer.Deserialize<Dictionary<string, object>>(original); }
+                catch (Exception ex)
+                {
+                    PostClaudeDesktopStatus(false, "Could not parse claude_desktop_config.json: " + ex.Message);
+                    return;
+                }
+                if (root == null) root = new Dictionary<string, object>();
+
+                Dictionary<string, object> servers;
+                if (root.ContainsKey("mcpServers") && root["mcpServers"] is Dictionary<string, object>)
+                    servers = (Dictionary<string, object>)root["mcpServers"];
+                else
+                {
+                    servers = new Dictionary<string, object>();
+                    root["mcpServers"] = servers;
+                }
+
+                servers["clarion-assistant"] = new Dictionary<string, object>
+                {
+                    { "command", nodeExe },
+                    { "args", new object[]
+                        {
+                            mcpRemoteJs,
+                            _mcpServer.McpUrl,
+                            "--header",
+                            "Authorization:Bearer " + token
+                        }
+                    }
+                };
+
+                string serialized = serializer.Serialize(root);
+                string pretty = PrettyPrintJson(serialized);
+
+                // Atomic write via temp + Move (no ReplaceFile here — first-ever
+                // write is also possible, and the file isn't security-critical
+                // enough to need cross-process coordination).
+                string tmpPath = configPath + ".ca-new";
+                File.WriteAllText(tmpPath, pretty, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                try
+                {
+                    if (File.Exists(configPath)) File.Delete(configPath);
+                    File.Move(tmpPath, configPath);
+                }
+                catch
+                {
+                    try { if (File.Exists(tmpPath)) File.Delete(tmpPath); } catch { }
+                    throw;
+                }
+
+                PostClaudeDesktopStatus(true,
+                    "Added clarion-assistant to Claude Desktop config. Restart Claude Desktop to load it. (Backup: " +
+                    Path.GetFileName(configPath) + ".clarionassistant.bak)");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[SettingsDialog] HandleAddToClaudeDesktop failed: " + ex);
+                PostClaudeDesktopStatus(false, "Failed: " + ex.Message);
+            }
+        }
+
+        private void PostClaudeDesktopStatus(bool ok, string message)
+        {
+            try
+            {
+                string msg = "{\"type\":\"mcpClaudeDesktopStatus\",\"ok\":" + (ok ? "true" : "false") +
+                             ",\"message\":\"" + EscapeJson(message ?? "") + "\"}";
+                _webView.CoreWebView2.PostWebMessageAsString(msg);
+            }
+            catch { }
+        }
+
+        private static string ResolveNodeExeForClaudeDesktop()
+        {
+            try
+            {
+                string defaultPath = @"C:\Program Files\nodejs\node.exe";
+                if (File.Exists(defaultPath)) return defaultPath;
+            }
+            catch { }
+            try
+            {
+                string pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+                foreach (string dir in pathEnv.Split(Path.PathSeparator))
+                {
+                    if (string.IsNullOrWhiteSpace(dir)) continue;
+                    string candidate = Path.Combine(dir.Trim(), "node.exe");
+                    if (File.Exists(candidate)) return candidate;
+                }
+            }
+            catch { }
+            return null;
+        }
+
+        // Minimal JSON pretty-printer. Re-formats the single-line output of
+        // JavaScriptSerializer with 2-space indentation. Not strict — assumes
+        // valid JSON in, which our serializer guarantees.
+        private static string PrettyPrintJson(string json)
+        {
+            var sb = new StringBuilder(json.Length + 256);
+            int depth = 0;
+            bool inString = false;
+            bool escape = false;
+            for (int i = 0; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (escape) { sb.Append(c); escape = false; continue; }
+                if (inString)
+                {
+                    sb.Append(c);
+                    if (c == '\\') escape = true;
+                    else if (c == '"') inString = false;
+                    continue;
+                }
+                if (c == '"') { sb.Append(c); inString = true; continue; }
+                switch (c)
+                {
+                    case '{':
+                    case '[':
+                        sb.Append(c);
+                        // Empty object / array inline — emit closing on same line
+                        // and advance the index so the main loop doesn't see the
+                        // closing brace again (which would push depth negative).
+                        if (i + 1 < json.Length && (json[i + 1] == '}' || json[i + 1] == ']'))
+                        {
+                            sb.Append(json[i + 1]);
+                            i++;
+                            break;
+                        }
+                        depth++;
+                        sb.AppendLine();
+                        sb.Append(new string(' ', depth * 2));
+                        break;
+                    case '}':
+                    case ']':
+                        if (depth > 0) depth--;
+                        sb.AppendLine();
+                        sb.Append(new string(' ', depth * 2));
+                        sb.Append(c);
+                        break;
+                    case ',':
+                        sb.Append(c);
+                        sb.AppendLine();
+                        sb.Append(new string(' ', depth * 2));
+                        break;
+                    case ':':
+                        sb.Append(": ");
+                        break;
+                    default:
+                        sb.Append(c);
+                        break;
+                }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Mint a fresh external MCP token, persist it, and notify the webview so
+        /// the input field updates without a full settings reload. Issue #24.
+        /// </summary>
+        private void HandleGenerateMcpExternalToken()
+        {
+            string token = SettingsService.GenerateMcpExternalToken();
+            _settings.SetMcpExternalToken(token);
+            try
+            {
+                string msg = "{\"type\":\"setMcpExternalToken\",\"token\":\"" + EscapeJson(token) + "\"}";
+                _webView.CoreWebView2.PostWebMessageAsString(msg);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[SettingsDialog] generateMcpExternalToken post failed: " + ex.Message);
             }
         }
 

@@ -434,7 +434,7 @@ namespace ClarionAssistant
                 }
                 else
                 {
-                    _mcpServer = new McpServer(this);
+                    _mcpServer = new McpServer(this, _settingsService);
                     var toolRegistry = new McpToolRegistry(_editorService, _parser);
                     _mcpServer.SetToolRegistry(toolRegistry);
 

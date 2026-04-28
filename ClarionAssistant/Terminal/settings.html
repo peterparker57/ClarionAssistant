@@ -314,6 +314,7 @@
     <div class="nav-item" onclick="showPage('data')">Data</div>
     <div class="nav-item" onclick="showPage('classes')">Classes</div>
     <div class="nav-item" onclick="showPage('github')">Source Control</div>
+    <div class="nav-item" onclick="showPage('mcp')">MCP Server</div>
     <div class="nav-item" onclick="showPage('acknowledgments')">Acknowledgments</div>
     <div class="nav-item" onclick="showPage('about')">About</div>
   </nav>
@@ -584,6 +585,60 @@
       <button class="btn" onclick="showGhForm()" style="margin-top:4px">+ Add Account</button>
 
       <!-- Add/Edit form is now in the ghFormOverlay modal -->
+    </div>
+
+    <!-- MCP Server -->
+    <div class="page" id="page-mcp">
+      <h2>MCP Server</h2>
+
+      <div style="padding:10px 12px;background:rgba(116,199,236,0.08);border:1px solid rgba(116,199,236,0.35);border-radius:4px;margin-bottom:14px;font-size:12px;line-height:1.5">
+        <b>Most users can skip this page.</b> ClarionAssistant's in-IDE Claude / Copilot / Codex tabs already talk to the local MCP server automatically — no setup needed.
+        <br><br>
+        Only enable the toggle below if you want a tool <i>outside</i> the IDE — for example <b>Claude Desktop</b>, <b>Cline</b>, or your own <code>mcp-remote</code> config — to reach the same IDE tools. If you don't recognize that scenario, you don't need this.
+      </div>
+
+      <h3>External Access</h3>
+      <div class="check-row">
+        <input type="checkbox" id="mcpExternalEnabled" onchange="onMcpExternalToggle()">
+        <label for="mcpExternalEnabled">Allow external MCP clients</label>
+      </div>
+      <div class="field-desc" style="margin-top:4px;margin-bottom:12px">
+        When enabled, requests bearing the static token below are accepted in addition to the per-session token. Off by default.
+      </div>
+
+      <div id="mcpExternalSection" style="display:none">
+        <div class="field">
+          <div class="field-label">Token</div>
+          <div class="input-row" style="gap:6px">
+            <input type="text" id="mcpExternalToken" readonly style="font-family:Cascadia Mono,Consolas,monospace;font-size:11px">
+            <button class="btn btn-sm" onclick="generateMcpExternalToken()">Generate</button>
+            <button class="btn btn-sm" onclick="copyMcpToken()">Copy</button>
+          </div>
+          <div class="field-desc">Click Generate to create a new 64-character hex token. <b>Generate commits immediately</b> so the snippet below is the live token — Cancel will not revert it. Regenerating invalidates any external configs already using the previous token.</div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Endpoint</div>
+          <input type="text" id="mcpEndpointUrl" readonly style="font-family:Cascadia Mono,Consolas,monospace;font-size:11px">
+          <div class="field-desc">The MCP server picks an available port at IDE startup (base 19372). Update your external tool's config if the port shifts.</div>
+        </div>
+
+        <div class="field">
+          <div class="field-label">Sample <code>mcp-remote</code> config</div>
+          <textarea id="mcpConfigSnippet" readonly rows="10"
+            style="width:100%;font-family:Cascadia Mono,Consolas,monospace;font-size:11px;background:var(--input-bg);color:var(--input-fg);border:1px solid var(--input-border);padding:8px;border-radius:4px;resize:vertical"></textarea>
+          <div class="input-row" style="margin-top:6px">
+            <button class="btn btn-sm" onclick="copyMcpConfig()">Copy config</button>
+            <button class="btn btn-sm" onclick="addToClaudeDesktop()">Add to Claude Desktop</button>
+          </div>
+          <div class="field-desc">Paste into the external tool's config, or click <b>Add to Claude Desktop</b> to merge directly into <code>%APPDATA%\Claude\claude_desktop_config.json</code> (a <code>.clarionassistant.bak</code> backup is kept). Restart the tool after.</div>
+          <div id="mcpClaudeDesktopStatus" class="field-desc" style="margin-top:6px;display:none"></div>
+        </div>
+
+        <div class="field-desc" style="margin-top:16px;padding:10px;background:rgba(255,170,0,0.10);border:1px solid rgba(255,170,0,0.4);border-radius:4px;color:var(--warning)">
+          <b>⚠ Security:</b> Anything on this machine that knows the token can drive your IDE through the MCP tools (read files, run commands, etc.). Treat it like a password. Disable external access when not needed.
+        </div>
+      </div>
     </div>
 
     <!-- Acknowledgments -->
@@ -1483,9 +1538,92 @@
       copilotPlan: _planByBackend.Copilot || '',
       codexPlan:   _planByBackend.Codex   || '',
       codexModel:  _modelByBackend.Codex  || '',
-      classOutputFolder: document.getElementById('classOutputFolder').value
+      classOutputFolder: document.getElementById('classOutputFolder').value,
+      mcpExternalEnabled: document.getElementById('mcpExternalEnabled') ? !!document.getElementById('mcpExternalEnabled').checked : false,
+      mcpExternalToken: (document.getElementById('mcpExternalToken') || {}).value || ''
     };
     send('save', data);
+  }
+
+  // ── External MCP client access (issue #24) ──────────────
+  var _mcpPort = 0;
+
+  function onMcpExternalToggle() {
+    // No auto-mint. Generating a token persists it immediately to settings.txt
+    // (the snippet shown below has to BE the live token so the user can paste +
+    // test before clicking Save). If we auto-minted on toggle, a user who toggles
+    // on then clicks Cancel would still have a long-lived bearer token written
+    // to disk that they never explicitly committed — both codex gates flagged
+    // this as a credential-lifecycle violation in Run 3 (HIGH). Require an
+    // explicit Generate click before any token hits disk.
+    updateMcpPanelVisibility();
+    updateMcpEndpointAndSnippet();
+  }
+
+  function updateMcpPanelVisibility() {
+    var chk = document.getElementById('mcpExternalEnabled');
+    var section = document.getElementById('mcpExternalSection');
+    if (section) section.style.display = (chk && chk.checked) ? 'block' : 'none';
+  }
+
+  function updateMcpEndpointAndSnippet() {
+    var endpointInput = document.getElementById('mcpEndpointUrl');
+    var snippet = document.getElementById('mcpConfigSnippet');
+    var token = (document.getElementById('mcpExternalToken') || {}).value || '';
+    // /mcp is CA's canonical Streamable-HTTP endpoint, same path the in-IDE
+    // Claude/Copilot/Codex backends use. mcp-remote auto-detects the transport
+    // so external clients don't have to care that this is HTTP, not legacy SSE.
+    var url = _mcpPort > 0
+      ? 'http://localhost:' + _mcpPort + '/mcp'
+      : '(MCP server not running — open the dialog with the IDE running)';
+    if (endpointInput) endpointInput.value = url;
+    if (snippet) {
+      var tokenForSnippet = token || '<TOKEN>';
+      var urlForSnippet = _mcpPort > 0 ? url : 'http://localhost:<PORT>/mcp';
+      snippet.value =
+        '{\n' +
+        '  "mcpServers": {\n' +
+        '    "clarion-assistant": {\n' +
+        '      "command": "npx",\n' +
+        '      "args": [\n' +
+        '        "-y",\n' +
+        '        "mcp-remote",\n' +
+        '        "' + urlForSnippet + '",\n' +
+        '        "--header",\n' +
+        '        "Authorization:Bearer ' + tokenForSnippet + '"\n' +
+        '      ]\n' +
+        '    }\n' +
+        '  }\n' +
+        '}';
+    }
+  }
+
+  function generateMcpExternalToken() {
+    send('generateMcpExternalToken');
+  }
+
+  function copyMcpToken() {
+    var f = document.getElementById('mcpExternalToken');
+    if (!f || !f.value) return;
+    f.select();
+    try { document.execCommand('copy'); } catch(ex) {}
+  }
+
+  function copyMcpConfig() {
+    var s = document.getElementById('mcpConfigSnippet');
+    if (!s || !s.value) return;
+    s.select();
+    try { document.execCommand('copy'); } catch(ex) {}
+  }
+
+  function addToClaudeDesktop() {
+    var status = document.getElementById('mcpClaudeDesktopStatus');
+    if (status) {
+      status.style.display = 'block';
+      status.style.color = '';
+      status.textContent = 'Writing to claude_desktop_config.json…';
+    }
+    send('addToClaudeDesktop');
   }
 
   // Receive messages from C#
@@ -1571,11 +1709,36 @@
       _classModels = s.classModels || [];
       document.getElementById('classOutputFolder').value = s.classOutputFolder || '';
       renderClassModels();
+
+      // External MCP client access (issue #24)
+      _mcpPort = s.mcpPort || 0;
+      var mcpEnabledChk = document.getElementById('mcpExternalEnabled');
+      if (mcpEnabledChk) {
+        mcpEnabledChk.checked = !!s.mcpExternalEnabled;
+        document.getElementById('mcpExternalToken').value = s.mcpExternalToken || '';
+        updateMcpPanelVisibility();
+        updateMcpEndpointAndSnippet();
+      }
     }
 
     if (msg.type === 'setClassModels') {
       _classModels = msg.models || [];
       renderClassModels();
+    }
+
+    if (msg.type === 'setMcpExternalToken') {
+      var tk = document.getElementById('mcpExternalToken');
+      if (tk) tk.value = msg.token || '';
+      updateMcpEndpointAndSnippet();
+    }
+
+    if (msg.type === 'mcpClaudeDesktopStatus') {
+      var st = document.getElementById('mcpClaudeDesktopStatus');
+      if (st) {
+        st.style.display = 'block';
+        st.textContent = msg.message || '';
+        st.style.color = msg.ok ? 'var(--success, #40a02b)' : 'var(--warning, #df8e1d)';
+      }
     }
 
     if (msg.type === 'browseResult') {

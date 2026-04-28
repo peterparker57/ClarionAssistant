@@ -21,6 +21,7 @@ namespace ClarionAssistant.Services
         private Thread _listenerThread;
         private volatile bool _running;
         private readonly Control _uiControl;
+        private readonly SettingsService _settings;
         private McpToolRegistry _toolRegistry;
         private int _port;
 
@@ -63,9 +64,19 @@ namespace ClarionAssistant.Services
             get { return _running ? string.Format("http://localhost:{0}/mcp", _port) : null; }
         }
 
-        public McpServer(Control uiControl)
+        public McpServer(Control uiControl) : this(uiControl, null) { }
+
+        /// <summary>
+        /// Construct the MCP server. <paramref name="settings"/> is optional;
+        /// when supplied, RequireAuth additionally accepts a stable user-managed
+        /// "external" token (issue #24) so external tools like Claude Desktop
+        /// can authenticate without seeing the per-session token. When null,
+        /// only the per-session token is accepted.
+        /// </summary>
+        public McpServer(Control uiControl, SettingsService settings)
         {
             _uiControl = uiControl;
+            _settings = settings;
         }
 
         public void SetToolRegistry(McpToolRegistry registry)
@@ -138,28 +149,54 @@ namespace ClarionAssistant.Services
         /// Authenticate the request via <c>Authorization: Bearer &lt;token&gt;</c>.
         /// Returns true on success; on failure sends 401 and returns false so the
         /// caller should stop processing.
+        ///
+        /// Two tokens are accepted:
+        /// <list type="bullet">
+        /// <item>The per-session token regenerated every <see cref="Start"/> —
+        /// used by in-IDE flows (Claude / Copilot / Codex tabs).</item>
+        /// <item>A stable user-managed "external" token from Settings (issue
+        /// #24) — only when <c>Mcp.ExternalAccessEnabled</c> is true.
+        /// Persists across IDE sessions so external tools (Claude Desktop,
+        /// Cline, custom mcp-remote configs) don't break on restart.</item>
+        /// </list>
+        ///
+        /// Both are compared in constant time. Settings are read on each
+        /// request so toggling external access or rotating the token takes
+        /// effect immediately without restarting the server.
         /// </summary>
         private bool RequireAuth(HttpListenerContext context)
         {
             string header = context.Request.Headers["Authorization"];
             const string prefix = "Bearer ";
-            if (string.IsNullOrEmpty(header) || !header.StartsWith(prefix, StringComparison.Ordinal)
-                || !TokensEqual(header.Substring(prefix.Length), _sessionToken ?? ""))
+            if (!string.IsNullOrEmpty(header) && header.StartsWith(prefix, StringComparison.Ordinal))
             {
-                try
+                string presented = header.Substring(prefix.Length);
+
+                if (TokensEqual(presented, _sessionToken ?? ""))
+                    return true;
+
+                if (_settings != null
+                    && _settings.GetMcpExternalAccessEnabled())
                 {
-                    context.Response.StatusCode = 401;
-                    context.Response.Headers.Add("WWW-Authenticate", "Bearer");
-                    byte[] buf = Encoding.UTF8.GetBytes("{\"error\":\"unauthorized\"}");
-                    context.Response.ContentType = "application/json";
-                    context.Response.ContentLength64 = buf.Length;
-                    context.Response.OutputStream.Write(buf, 0, buf.Length);
-                    context.Response.Close();
+                    string externalToken = _settings.GetMcpExternalToken();
+                    if (!string.IsNullOrEmpty(externalToken)
+                        && TokensEqual(presented, externalToken))
+                        return true;
                 }
-                catch { }
-                return false;
             }
-            return true;
+
+            try
+            {
+                context.Response.StatusCode = 401;
+                context.Response.Headers.Add("WWW-Authenticate", "Bearer");
+                byte[] buf = Encoding.UTF8.GetBytes("{\"error\":\"unauthorized\"}");
+                context.Response.ContentType = "application/json";
+                context.Response.ContentLength64 = buf.Length;
+                context.Response.OutputStream.Write(buf, 0, buf.Length);
+                context.Response.Close();
+            }
+            catch { }
+            return false;
         }
 
         /// <summary>

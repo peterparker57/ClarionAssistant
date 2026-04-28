@@ -1920,7 +1920,7 @@ namespace ClarionAssistant
         private void OnSettings(object sender, EventArgs e)
         {
             var parent = FindForm();
-            var dlg = new ClaudeChatSettingsDialog(_settings, _isDarkTheme);
+            var dlg = new ClaudeChatSettingsDialog(_settings, _mcpServer, _isDarkTheme);
 
             dlg.SettingsSaved += (d) =>
             {
@@ -2277,7 +2277,7 @@ namespace ClarionAssistant
 
         private void StartMcpServer()
         {
-            _mcpServer = new McpServer(this);
+            _mcpServer = new McpServer(this, _settings);
             _toolRegistry = new McpToolRegistry(_editorService, _parser);
 
             // Give the tool registry a reference back so it can access solution context and run indexing
