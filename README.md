@@ -12,7 +12,7 @@
 <p align="center">
   <a href="https://github.com/peterparker57/ClarionAssistant/releases/latest"><img src="https://img.shields.io/github/v/release/peterparker57/ClarionAssistant?include_prereleases&label=download&style=for-the-badge" alt="Download"></a>
   <img src="https://img.shields.io/badge/Clarion-10%20%7C%2011%20%7C%2012-blue?style=for-the-badge" alt="Clarion 10 | 11 | 12">
-  <img src="https://img.shields.io/badge/version-4.3-green?style=for-the-badge" alt="v4.3">
+  <img src="https://img.shields.io/badge/version-4.5-green?style=for-the-badge" alt="v4.5">
 </p>
 
 ---
@@ -39,6 +39,54 @@ Ask it to write Clarion code, explain procedures, refactor classes, build COM co
 - **Diff viewer** &mdash; Monaco-based side-by-side diffs with syntax highlighting
 - **Knowledge system** &mdash; persistent cross-session memory for decisions, patterns, and gotchas
 - **Zoom persistence** &mdash; Ctrl+mousewheel zoom is saved and restored across sessions
+
+---
+
+## What's New in v4.5
+
+### External MCP client access (issue #24)
+
+Lets external tools (Claude Desktop, Cline, custom mcp-remote setups) authenticate against ClarionAssistant's local MCP server using a stable user-managed token instead of the per-session token that rotates each IDE start.
+
+- **New "MCP Server" Settings page** with a "Most users can skip this page" intro &mdash; the toggle is opt-in for users who want CA's IDE tools surfaced in tools outside the IDE.
+- **Allow external MCP clients toggle** persists across IDE restarts. Off by default.
+- **Generate button** mints a 64-character hex bearer token, stored in `settings.txt`. Idempotent: regenerating invalidates any external configs already using the previous token.
+- **Live endpoint URL** display shows `http://localhost:<port>/mcp` (port is dynamically chosen at startup).
+- **Pre-filled `mcp-remote` config snippet** with **Copy config** button &mdash; ready to paste into the external tool's MCP config.
+- **Add to Claude Desktop button** &mdash; one-click integration: writes the `clarion-assistant` entry directly into `%APPDATA%\Claude\claude_desktop_config.json`, backs up the original to `.clarionassistant.bak`, atomic write. Idempotent (re-click after rotating token to push the update).
+- **Dual-token authentication in `RequireAuth`** &mdash; the per-session token still authenticates in-IDE Claude Code / Copilot / Codex tabs; the static external token is checked additionally when external access is enabled. Both compared in constant time. Settings re-read on every request so toggle/rotation takes effect immediately.
+
+### SettingsService cross-process hardening (collateral)
+
+Strengthening the settings store to support the External MCP feature surfaced multiple latent issues that affect every settings save, not just MCP tokens:
+
+- **Static lock + named mutex** (`Local\ClarionAssistant.SettingsService.v1`) serializes settings writes across all SettingsService instances within a process AND across multiple ClarionAssistant processes (the addin supports multi-IDE).
+- **Reload-before-write merge** &mdash; rotating Mcp.ExternalToken in one place no longer gets reverted when an unrelated control later saves an unrelated setting.
+- **Atomic file replace** via temp-file + `File.Replace` (ReplaceFileW on NTFS) so concurrent readers always see either the old file or the new file, never a half-written one.
+- **Reload preserves in-memory state** when the file is missing or the read fails &mdash; transient delete-then-rename from sync tools / antivirus no longer wipes settings on the next save.
+- **`SettingsLockedException`** is thrown when another CA process holds the cross-process mutex past the 5s budget; the settings dialog catches it and surfaces an actionable message instead of silently degrading.
+
+### Pre-existing security hardening still applies
+
+The MCP server still binds to loopback only (Windows OS blocks remote connections), validates Host and Origin headers (DNS-rebinding and browser-drive-by defense), and uses constant-time token comparison.
+
+---
+
+## What's New in v4.4
+
+### OpenAI Codex CLI backend
+
+Codex joins Claude Code and Copilot as a third launchable terminal backend.
+
+- **Backend selection on the dashboard** &mdash; Codex is now a third option alongside Claude Code and Copilot. Tab labels show **CC** (Claude Code) / **CP** (Copilot) / **CO** (Codex).
+- **MCP wiring via `mcp-remote` stdio bridge** &mdash; Codex CLI's native HTTP/SSE transport timed out against CA's Streamable-HTTP `/mcp` endpoint, so CA writes a marker-delimited block in `~/.codex/config.toml` that bridges through `mcp-remote`. Foreign tables Codex CLI itself appends inside the markers (e.g. `[tui.model_availability_nux]`) are lifted out and preserved on rewrite.
+- **Pinned `mcp-remote` install** &mdash; CA refuses to write the Codex MCP config if `mcp-remote` isn't installed at the expected npm-global location, and refuses to wire it if the installed version doesn't match the pinned version. Closes a supply-chain risk where `npx -y mcp-remote` would auto-fetch from the public registry at launch with the live MCP bearer token.
+- **Codex settings panel** &mdash; reasoning effort dropdown (Auto / low / medium / high), one-time install instruction for `mcp-remote`. Models populated from Codex CLI's actual `/models` list: GPT-5.5 (default), GPT-5.4, GPT-5.4 mini, GPT-5.3 Codex, GPT-5.2.
+- **AGENTS.md preserved** &mdash; CA only writes the briefing file when one doesn't already exist in the working directory. Won't clobber a repo-tracked `AGENTS.md`.
+- **Robust exception handling in the launch banner** &mdash; failure-reason text is sanitized (CR/LF, double quotes, single quotes, truncated to 240 chars) before splicing into the PowerShell `Write-Host` payload.
+
+### Bundled installer ships with Codex support
+Settings → MCP Server panel and the new sidebar entry are part of the standard install.
 
 ---
 
